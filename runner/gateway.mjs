@@ -151,11 +151,9 @@ async function stopRecording() {
  * resolution changes. Where a tree exists, naming the thing is both stabler and
  * easier to read.
  */
-async function tapByText(text, exact) {
+async function tapByText(text, exact, { attempts = 4, gapMs = 1500 } = {}) {
 	if (!text) throw new Error('tap/text needs text')
 	const needle = text.toLowerCase()
-	const { windows = [] } = await driver.tree()
-
 	const labelOf = (node) => String(node.text ?? node.label ?? node.name ?? '')
 	const matches = (node) => {
 		const label = labelOf(node).toLowerCase()
@@ -163,9 +161,18 @@ async function tapByText(text, exact) {
 		return exact ? label === needle : label.includes(needle)
 	}
 
-	// Prefer something the tree says is actually tappable.
-	const candidates = windows.filter(matches)
-	const target = candidates.find((n) => n.clickable) ?? candidates[0]
+	let target = null
+	let windows = []
+	// A UI tree is a snapshot of something still moving: right after a screen
+	// change the dump can still describe the previous one.
+	for (let attempt = 0; attempt < attempts && !target; attempt++) {
+		if (attempt) await new Promise((r) => setTimeout(r, gapMs))
+		;({ windows = [] } = await driver.tree())
+		const candidates = windows.filter(matches)
+		// Prefer something the tree says is actually tappable.
+		target = candidates.find((n) => n.clickable) ?? candidates[0] ?? null
+	}
+
 	if (!target) {
 		const seen = windows.map(labelOf).filter(Boolean).slice(0, 25)
 		throw new Error(`nothing matching ${JSON.stringify(text)} on screen. Visible: ${seen.join(' | ') || 'nothing labelled'}`)
