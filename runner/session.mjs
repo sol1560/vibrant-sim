@@ -104,17 +104,32 @@ async function startMacDesktop() {
 	await startNoVnc('localhost:5900')
 }
 
+/** Runs a full command line through the shell, so quoting survives. */
+function shellCommand(commandLine, options = {}) {
+	return new Promise((resolve, reject) => {
+		const child = spawn(commandLine, { shell: true, stdio: 'inherit', ...options })
+		child.on('error', reject)
+		child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`command failed (${code}): ${commandLine.split(' ')[0]}`)))) 
+	})
+}
+
 async function startWindowsDesktop() {
 	log('installing TightVNC')
-	await sh('choco', ['install', 'tightvnc', '-y', '--no-progress', '--installargs',
-		`ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=${VNC_PASSWORD} SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0`],
-		{ shell: true })
+	// VNC authentication is off on purpose: the server only listens on loopback
+	// and the gateway already demands a pairing key. Turning it on here would
+	// also put the password in the job log via chocolatey's output.
+	await shellCommand(
+		'choco install tightvnc -y --no-progress --installargs ' +
+		'"ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=0 ' +
+		'SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0" > choco.log 2>&1',
+	)
 	await sleep(5000)
-	if (!existsSync('/tmp/novnc') && !existsSync('C:/novnc')) {
-		await sh('git', ['clone', '--depth', '1', '-q', 'https://github.com/novnc/noVNC.git', 'C:/novnc'], { shell: true })
+
+	if (!existsSync('C:/novnc')) {
+		await shellCommand('git clone --depth 1 -q https://github.com/novnc/noVNC.git C:/novnc')
 	}
-	await sh('python', ['-m', 'pip', 'install', '--quiet', 'websockify'], { shell: true })
-	background('python', ['-m', 'websockify', '--web', 'C:/novnc', String(DESKTOP_PORT), 'localhost:5900'], { shell: true })
+	await shellCommand('python -m pip install --quiet websockify')
+	background('cmd', ['/c', `python -m websockify --web C:/novnc ${DESKTOP_PORT} localhost:5900`])
 	await waitForHttp(`http://127.0.0.1:${DESKTOP_PORT}/vnc.html`, { label: 'noVNC', timeoutMs: 120_000 })
 }
 
@@ -184,9 +199,13 @@ if (USE_TUNNEL) {
 	// verify reachability anyway before it reports the session as usable.
 }
 
+// webtop serves its own client at the root. macOS and Windows go through noVNC,
+// and only macOS sets a VNC password, because ARD refuses to run without one.
 const viewerPath = OS === 'linux'
 	? '/'
-	: `/vnc.html?autoconnect=1&resize=scale&password=${encodeURIComponent(VNC_PASSWORD)}`
+	: OS === 'windows'
+		? '/vnc.html?autoconnect=1&resize=scale'
+		: `/vnc.html?autoconnect=1&resize=scale&password=${encodeURIComponent(VNC_PASSWORD)}`
 
 const handle = {
 	version: 1,
