@@ -1,0 +1,131 @@
+name: device-probe
+run-name: "device probe ${{ inputs.note }}"
+
+# Answers two questions that decide whether simulators are worth supporting:
+# can a Linux runner actually use KVM, and which Apple runtimes are really
+# installed (an SDK being present does not mean its runtime is).
+#
+# Prints no URLs and no keys.
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        default: devices
+
+permissions: {}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: KVM availability and permissions
+        run: |
+          echo "--- before ---"
+          ls -l /dev/kvm || echo "NO /dev/kvm"
+          id
+          # The rule GitHub's own docs do not mention; without it the emulator
+          # falls back to software rendering and runs 2-3x slower.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          echo "--- after ---"
+          ls -l /dev/kvm && echo "KVM_WRITABLE=$([ -w /dev/kvm ] && echo yes || echo no)"
+
+      - name: What the image already ships
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" 2>/dev/null || echo "no ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed 2>/dev/null | head -25 || echo "no sdkmanager"
+          which adb emulator avdmanager 2>/dev/null || true
+
+      - name: Create and boot an AVD
+        run: |
+          set -x
+          SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDK" --licenses > /dev/null 2>&1 || true
+          "$SDK" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" 2>&1 | tail -5
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            -n probe -k "system-images;android-35;google_apis;x86_64" -d pixel_6 --force
+          nohup emulator -avd probe -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect \
+            -accel on -no-snapshot > /tmp/emulator.log 2>&1 &
+          timeout 420 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 2; done' \
+            && echo "BOOT_OK" || echo "BOOT_FAIL"
+          adb devices
+          grep -iE "kvm|accel|hax" /tmp/emulator.log | head -10 || true
+
+      - name: Drive it
+        run: |
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          mkdir -p out
+          adb exec-out screencap -p > out/android.png && echo "SCREENSHOT_BYTES=$(stat -c%s out/android.png)"
+          adb shell wm size; adb shell wm density
+          adb shell input tap 540 1200 && echo "TAP_OK"
+          adb shell input text "hello" && echo "TEXT_OK"
+          adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 \
+            && adb pull /sdcard/ui.xml out/ui.xml >/dev/null 2>&1 \
+            && echo "UIDUMP_BYTES=$(stat -c%s out/ui.xml)" || echo "UIDUMP_FAIL"
+          timeout 20 adb shell screenrecord --time-limit 8 /sdcard/rec.mp4 \
+            && adb pull /sdcard/rec.mp4 out/ >/dev/null 2>&1 \
+            && echo "RECORD_BYTES=$(stat -c%s out/rec.mp4)" || echo "RECORD_FAIL"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with: { name: android-probe, path: out/, if-no-files-found: ignore }
+
+  apple:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Which runtimes are actually installed
+        run: |
+          xcodebuild -version
+          echo "--- runtimes ---"
+          xcrun simctl list runtimes
+          echo "--- devices by runtime ---"
+          xcrun simctl list devices available
+
+      - name: Screenshot and record on every family present
+        run: |
+          mkdir -p out
+          xcrun simctl list devices available --json > out/devices.json
+          for family in iOS watchOS tvOS xrOS; do
+            udid=$(jq -r --arg f "$family" \
+              '[.devices | to_entries[] | select(.key | test($f)) | .value[] | select(.isAvailable)] | .[0].udid // empty' \
+              out/devices.json)
+            name=$(jq -r --arg f "$family" \
+              '[.devices | to_entries[] | select(.key | test($f)) | .value[] | select(.isAvailable)] | .[0].name // empty' \
+              out/devices.json)
+            if [ -z "$udid" ]; then echo "$family: NONE INSTALLED"; continue; fi
+            echo "=== $family: $name ($udid) ==="
+            xcrun simctl boot "$udid" 2>&1 | tail -1 || true
+            xcrun simctl bootstatus "$udid" -b 2>&1 | tail -1 || true
+            xcrun simctl io "$udid" screenshot --type=png "out/$family.png" \
+              && echo "$family SCREENSHOT_BYTES=$(stat -f%z out/$family.png)" || echo "$family SCREENSHOT_FAIL"
+            # No `timeout` on macOS; run it in the background and interrupt it.
+            xcrun simctl io "$udid" recordVideo --codec=h264 --force "out/$family.mp4" &
+            rec=$!
+            sleep 8
+            kill -INT $rec 2>/dev/null || true
+            wait $rec 2>/dev/null || true
+            sleep 2
+            [ -s "out/$family.mp4" ] && echo "$family RECORD_BYTES=$(stat -f%z out/$family.mp4)" || echo "$family RECORD_FAIL"
+            xcrun simctl shutdown "$udid" 2>&1 | tail -1 || true
+          done
+
+      - name: Can the simulator window be driven from the desktop
+        run: |
+          udid=$(jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.isAvailable)] | .[0].udid // empty' out/devices.json)
+          [ -z "$udid" ] && { echo "no iOS device"; exit 0; }
+          xcrun simctl boot "$udid" 2>&1 | tail -1 || true
+          open -a Simulator
+          sleep 25
+          osascript -e 'tell application "System Events" to tell process "Simulator" to get {name, position, size} of every window' 2>&1 | head -3 \
+            || echo "SIMULATOR_WINDOW_UNREADABLE"
+          screencapture -x out/simulator-on-desktop.png && echo "DESKTOP_SHOT_BYTES=$(stat -f%z out/simulator-on-desktop.png)"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with: { name: apple-probe, path: out/, if-no-files-found: ignore }
