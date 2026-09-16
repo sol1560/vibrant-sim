@@ -11,7 +11,7 @@
 
 import { spawn } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect } from 'node:net'
 import { join, resolve } from 'node:path'
@@ -221,6 +221,11 @@ const server = createServer(async (req, res) => {
 	touch()
 
 	if (url.pathname.startsWith('/__vsim/api/')) return handleApi(req, res, url)
+	if (url.pathname === '/__vsim/view') {
+		const page = readFileSync(new URL('./viewer.html', import.meta.url))
+		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': page.length })
+		return res.end(page)
+	}
 	return proxyHttp(req, res)
 })
 

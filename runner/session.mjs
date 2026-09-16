@@ -238,13 +238,16 @@ if (USE_TUNNEL) {
 	// verify reachability anyway before it reports the session as usable.
 }
 
-// webtop serves its own client at the root. macOS and Windows go through noVNC,
-// and only macOS sets a VNC password, because ARD refuses to run without one.
+// webtop and TightVNC hand a browser a real remote-framebuffer session. macOS
+// cannot: its built-in VNC server demands account credentials, and a hosted
+// runner has no secure token to reset the account password with. The built-in
+// viewer polls the same screenshot endpoint the agent uses, so the picture is
+// there either way.
 const viewerPath = OS === 'linux'
 	? '/'
 	: OS === 'windows'
 		? '/vnc.html?autoconnect=1&resize=scale'
-		: `/vnc.html?autoconnect=1&resize=scale&password=${encodeURIComponent(VNC_PASSWORD)}`
+		: '/__vsim/view'
 
 const handle = {
 	version: 1,

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vibrant-sim</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; background: #111; color: #ddd;
+    font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 8px 14px; background: #1b1b1b; border-bottom: 1px solid #2c2c2c;
+  }
+  h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .meta { color: #888; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3ba55d; margin-right: 6px; }
+  .dot.stale { background: #d9822b; }
+  .dot.down { background: #cc4b4b; }
+  label { color: #999; display: flex; align-items: center; gap: 5px; }
+  main { flex: 1; display: grid; place-items: center; overflow: auto; padding: 14px; }
+  img { max-width: 100%; max-height: 100%; cursor: crosshair; box-shadow: 0 0 0 1px #2c2c2c; }
+  footer { padding: 6px 14px; background: #1b1b1b; border-top: 1px solid #2c2c2c; color: #777; }
+</style>
+</head>
+<body>
+<header>
+  <h1>vibrant-sim</h1>
+  <span class="meta"><span class="dot" id="dot"></span><span id="status">connecting</span></span>
+  <span class="meta" id="size"></span>
+  <label><input type="checkbox" id="drive"> click and type here</label>
+  <label>fps <input type="range" id="fps" min="1" max="6" value="2" style="width:70px"></label>
+</header>
+<main><img id="screen" alt="the session's screen"></main>
+<footer id="hint">Read-only. Tick “click and type here” to drive the machine yourself.</footer>
+
+<script>
+// Polls the same screenshot endpoint the agent uses, and posts input back to
+// the same control API. Works anywhere a screenshot works, which is what makes
+// a live picture possible on macOS, where the built-in VNC server insists on
+// account credentials that a hosted runner cannot hand out.
+const api = (action, body) =>
+  fetch('/__vsim/api/' + action, {
+    method: 'POST',
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+const screen = document.getElementById('screen')
+const statusEl = document.getElementById('status')
+const dot = document.getElementById('dot')
+const sizeEl = document.getElementById('size')
+const drive = document.getElementById('drive')
+const fps = document.getElementById('fps')
+
+let natural = { width: 0, height: 0 }
+let misses = 0
+let current = null
+
+async function tick() {
+  try {
+    const res = await api('screenshot')
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const blob = await res.blob()
+    const next = URL.createObjectURL(blob)
+    screen.src = next
+    if (current) URL.revokeObjectURL(current)
+    current = next
+    misses = 0
+    dot.className = 'dot'
+    statusEl.textContent = 'live'
+  } catch (err) {
+    misses++
+    dot.className = misses > 3 ? 'dot down' : 'dot stale'
+    statusEl.textContent = misses > 3 ? 'disconnected' : 'reconnecting'
+  }
+  setTimeout(tick, Math.round(1000 / Number(fps.value)))
+}
+
+screen.addEventListener('load', () => {
+  natural = { width: screen.naturalWidth, height: screen.naturalHeight }
+  sizeEl.textContent = natural.width + '×' + natural.height
+})
+
+/** Maps a click on the scaled image back to a coordinate on the real screen. */
+function screenPoint(event) {
+  const box = screen.getBoundingClientRect()
+  return {
+    x: Math.round((event.clientX - box.left) / box.width * natural.width),
+    y: Math.round((event.clientY - box.top) / box.height * natural.height),
+  }
+}
+
+screen.addEventListener('click', (event) => {
+  if (!drive.checked) return
+  const { x, y } = screenPoint(event)
+  api('click', { x, y })
+})
+
+screen.addEventListener('contextmenu', (event) => {
+  if (!drive.checked) return
+  event.preventDefault()
+  const { x, y } = screenPoint(event)
+  api('click', { x, y, button: 'right' })
+})
+
+const NAMED_KEYS = {
+  Enter: 'Return', Backspace: 'delete', Delete: 'delete', Tab: 'tab', Escape: 'escape',
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+}
+
+window.addEventListener('keydown', (event) => {
+  if (!drive.checked) return
+  if (event.target instanceof HTMLInputElement) return
+  const named = NAMED_KEYS[event.key]
+  if (named) {
+    event.preventDefault()
+    return void api('key', { combo: named })
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    if (event.key.length !== 1) return
+    event.preventDefault()
+    const parts = []
+    if (event.ctrlKey) parts.push('ctrl')
+    if (event.metaKey) parts.push('cmd')
+    if (event.altKey) parts.push('alt')
+    if (event.shiftKey) parts.push('shift')
+    parts.push(event.key.toLowerCase())
+    return void api('key', { combo: parts.join('+') })
+  }
+  if (event.key.length === 1) {
+    event.preventDefault()
+    api('type', { text: event.key })
+  }
+})
+
+api('info')
+  .then((r) => r.json())
+  .then((info) => { document.title = 'vibrant-sim — ' + info.os })
+  .catch(() => {})
+
+tick()
+</script>
+</body>
+</html>
