@@ -210,7 +210,7 @@ async function startAndroidEmulator() {
 	log(`installing ${image}`)
 	await shellCommand(`yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true`, { env: androidEnv })
 	await shellCommand(`"${sdkmanager}" "platform-tools" "emulator" "${image}" > sdk-install.log 2>&1`, { env: androidEnv })
-	await shellCommand(`echo no | "${avdmanager}" create avd -n vsim -k "${image}" --force > /dev/null 2>&1`, { env: androidEnv })
+	await shellCommand(`echo no | "${avdmanager}" create avd -n vsim -k "${image}" -d pixel_6 --force > /dev/null 2>&1`, { env: androidEnv })
 
 	log('booting the emulator')
 	background(join(sdk, 'emulator/emulator'),

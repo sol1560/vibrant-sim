@@ -90,7 +90,7 @@ export class SessionClient {
 	}
 
 	/** Polls until the gateway answers, so `session start` can return a usable handle. */
-	async waitUntilReady(timeoutMs = 180_000): Promise<void> {
+	async waitUntilReady(timeoutMs = 900_000): Promise<void> {
 		const deadline = Date.now() + timeoutMs
 		let last = 'no attempt'
 		while (Date.now() < deadline) {
