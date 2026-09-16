@@ -156,7 +156,7 @@ then exercised end to end from a separate machine.
 | person drives from the browser | ✅ | ✅ | ✅ |
 | tunnel | cloudflared ✅ | cloudflared ✅ | cloudflared ✅ |
 | interactive session, end to end | ✅ | ✅ | ✅ |
-| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35049009011) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35050143870) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35051228635) |
+| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35074765784) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35075484365) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35074785788) |
 
 And the simulators:
 
@@ -167,7 +167,7 @@ And the simulators:
 | input | `adb input` ✅ | CGEvent, mapped into the window ✅ |
 | accessibility tree | uiautomator, full ✅ | none outside XCUITest |
 | video | `adb screenrecord` ✅ | `simctl io recordVideo` ✅ |
-| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35069187087) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35062586105) |
+| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35074804684) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35074794807) |
 
 `-accel-check` reports *KVM (version 12) is installed and usable* once the udev
 rule is in place, and all four Apple families boot, screenshot and record.
@@ -199,6 +199,10 @@ Four things that only showed up by running it:
   try to check its own tunnel.
 - **CGEvent delivery is asynchronous.** Exiting straight after posting loses the
   keystroke; three Return presses produced two newlines until the helper waited.
+- **The first event a fresh process posts is dropped** if the HID tap is not
+  ready, so the opening characters went missing however long the caller waited
+  first. The helper now presses Shift, which produces no character, before
+  typing anything.
 - **The first cross-app Apple Event raises a modal** asking to allow controlling
   that app, and it blocks the `osascript` that triggered it. Nothing answers it
   on a runner, so an unattended flow hangs. Synthetic input needs no
