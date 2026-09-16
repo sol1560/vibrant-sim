@@ -79,20 +79,20 @@
       "type": "bluetooth"
     },
     {
-      "wait": 2500
-    },
-    {
-      "name": "capture the typed query",
-      "screenshot": "search"
+      "wait": 800
     },
     {
       "name": "the typing really reached the field",
-      "comment": "Clear text only exists once a search field has content.",
+      "comment": "Asserted immediately: the Google search module is unstable on an emulator without Play services and can drop back to the Settings home a second or two later.",
       "assertText": "Clear text"
     },
     {
       "name": "and the field holds the query",
       "assertText": "bluetooth"
+    },
+    {
+      "name": "capture the typed query",
+      "screenshot": "search"
     }
   ]
 }
