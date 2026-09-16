@@ -63,6 +63,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -avd probe \
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect -camera-back none -camera-front none \
+            -feature -Vulkan \
             > /tmp/emulator.log 2>&1 &
           echo "emulator pid $!"
           timeout 420 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 2; done' \
@@ -99,6 +100,10 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           mkdir -p out
           adb exec-out screencap -p > out/android.png && echo "SCREENSHOT_BYTES=$(stat -c%s out/android.png)"
+          # A flat frame compresses to almost nothing; that is the tell.
+          bytes=$(stat -c%s out/android.png)
+          [ "$bytes" -gt 40000 ] && echo "SCREENCAP_PLAUSIBLE=yes" || echo "SCREENCAP_PLAUSIBLE=no"
+          magick out/android.png -unique-colors -format "SCREENCAP_UNIQUE_COLOURS=%w\n" info: || true
           adb shell wm size; adb shell wm density
           adb shell input tap 540 1200 && echo "TAP_OK"
           adb shell input text "hello" && echo "TEXT_OK"

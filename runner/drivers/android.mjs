@@ -8,6 +8,9 @@
 // node is clickable. Read that before reaching for a screenshot.
 
 import { execFile } from 'node:child_process'
+import { readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -80,7 +83,44 @@ export async function screenshot() {
 	// exec-out keeps the PNG binary-clean; `shell screencap` mangles newlines.
 	const { stdout } = await adb(['exec-out', 'screencap', '-p'], { encoding: 'buffer' })
 	if (!stdout.length) throw new Error('screencap produced no bytes')
-	return stdout
+	if (!looksBlank(stdout)) return stdout
+
+	// screencap reads the framebuffer directly, and under software rendering
+	// that can come back a single flat colour while the screen is in fact
+	// drawn — screenrecord, which goes through the display pipeline, shows the
+	// real thing. Falling back costs a few seconds, so only do it when the
+	// frame really is empty.
+	console.log('[vsim] screencap returned a blank frame; grabbing one from screenrecord instead')
+	return frameFromRecording()
+}
+
+/**
+ * A flat frame compresses to almost nothing. A real screen at phone resolution
+ * never does, so an implausibly small PNG means the framebuffer read failed.
+ */
+function looksBlank(png) {
+	const { width, height } = pngSize(png)
+	return width * height > 250_000 && png.length < 40_000
+}
+
+function pngSize(png) {
+	return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+async function frameFromRecording() {
+	const remote = '/sdcard/vsim-frame.mp4'
+	const local = join(tmpdir(), `vsim-frame-${process.pid}-${Date.now()}.mp4`)
+	const still = `${local}.png`
+	try {
+		await shell(`rm -f ${remote}`)
+		await adb(['shell', 'screenrecord', '--time-limit', '2', '--bit-rate', '4000000', remote])
+		await adb(['pull', remote, local])
+		await run('ffmpeg', ['-v', 'error', '-sseof', '-1', '-i', local, '-frames:v', '1', '-y', still])
+		return await readFile(still)
+	} finally {
+		await rm(local, { force: true })
+		await rm(still, { force: true })
+	}
 }
 
 export const click = (x, y) => shell(`input tap ${Number(x)} ${Number(y)}`)

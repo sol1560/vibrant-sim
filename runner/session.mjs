@@ -215,7 +215,11 @@ async function startAndroidEmulator() {
 	log('booting the emulator')
 	background(join(sdk, 'emulator/emulator'),
 		['-avd', 'vsim', '-no-window', '-no-audio', '-no-boot-anim',
-			'-gpu', 'swiftshader_indirect', '-no-snapshot', '-camera-back', 'none', '-camera-front', 'none'],
+			'-gpu', 'swiftshader_indirect', '-no-snapshot',
+			'-camera-back', 'none', '-camera-front', 'none',
+			// Android 15+ prefers Vulkan, and swiftshader's Vulkan path leaves
+			// screencap reading an empty framebuffer.
+			'-feature', '-Vulkan'],
 		{ env: androidEnv })
 
 	const adb = join(sdk, 'platform-tools/adb')
