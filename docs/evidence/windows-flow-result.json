@@ -1,0 +1,162 @@
+{
+  "schema": "vibrant-sim/result@1",
+  "runId": "local-windows",
+  "target": "gha:windows",
+  "os": {
+    "family": "windows",
+    "image": "gha:windows",
+    "display": "session0-interactive",
+    "width": 1024,
+    "height": 768
+  },
+  "status": "passed",
+  "startedAt": "2026-09-16T03:18:52.264Z",
+  "durationMs": 22093,
+  "steps": [
+    {
+      "name": "the session is interactive",
+      "status": "passed",
+      "durationMs": 304,
+      "action": "exec [System.Environment]::UserInteractive",
+      "detail": "True\r\n"
+    },
+    {
+      "name": "capture the idle desktop",
+      "status": "passed",
+      "durationMs": 1397,
+      "action": "screenshot idle-desktop",
+      "evidence": [
+        "screenshots\\001-idle-desktop.png"
+      ]
+    },
+    {
+      "name": "launch Notepad",
+      "status": "passed",
+      "durationMs": 4455,
+      "action": "exec Start-Process -FilePath \"C:\\Windows\\System32\\notepad.exe\"; Start-Sleep 4; (Get-Process notepad | Measure-Object).Count",
+      "detail": "1\r\n"
+    },
+    {
+      "name": "bring it to the front",
+      "status": "passed",
+      "durationMs": 1188,
+      "action": "focus Notepad"
+    },
+    {
+      "name": "wait 2000ms",
+      "status": "passed",
+      "durationMs": 2001,
+      "action": "wait 2000ms"
+    },
+    {
+      "name": "click into the document",
+      "status": "passed",
+      "durationMs": 922,
+      "action": "click 462,337"
+    },
+    {
+      "name": "wait 2000ms",
+      "status": "passed",
+      "durationMs": 2001,
+      "action": "wait 2000ms"
+    },
+    {
+      "name": "type the first line",
+      "status": "passed",
+      "durationMs": 1457,
+      "action": "type 8 chars"
+    },
+    {
+      "name": "wait 600ms",
+      "status": "passed",
+      "durationMs": 602,
+      "action": "wait 600ms"
+    },
+    {
+      "name": "press Return",
+      "status": "passed",
+      "durationMs": 906,
+      "action": "key Return"
+    },
+    {
+      "name": "wait 600ms",
+      "status": "passed",
+      "durationMs": 616,
+      "action": "wait 600ms"
+    },
+    {
+      "name": "type the second line",
+      "status": "passed",
+      "durationMs": 1041,
+      "action": "type 8 chars"
+    },
+    {
+      "name": "wait 1200ms",
+      "status": "passed",
+      "durationMs": 1207,
+      "action": "wait 1200ms"
+    },
+    {
+      "name": "capture the typed document",
+      "status": "passed",
+      "durationMs": 928,
+      "action": "screenshot after-typing",
+      "evidence": [
+        "screenshots\\013-after-typing.png"
+      ]
+    },
+    {
+      "name": "select all",
+      "status": "passed",
+      "durationMs": 924,
+      "action": "key ctrl+a"
+    },
+    {
+      "name": "copy",
+      "status": "passed",
+      "durationMs": 903,
+      "action": "key ctrl+c"
+    },
+    {
+      "name": "wait 800ms",
+      "status": "passed",
+      "durationMs": 813,
+      "action": "wait 800ms"
+    },
+    {
+      "name": "both lines landed, so Return was not swallowed",
+      "status": "passed",
+      "durationMs": 427,
+      "action": "exec ((Get-Clipboard -Raw) -split \"`r`n\" | Where-Object { $_ -match 'line' } | Measure-Object).Count",
+      "detail": "2\r\n"
+    }
+  ],
+  "checks": [
+    {
+      "id": "the session is interactive",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "launch Notepad",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "both lines landed, so Return was not swallowed",
+      "kind": "assert",
+      "status": "passed"
+    }
+  ],
+  "evidence": {
+    "screenshots": [
+      "screenshots\\001-idle-desktop.png",
+      "screenshots\\013-after-typing.png"
+    ],
+    "logs": []
+  },
+  "cost": {
+    "runnerMinutes": 1,
+    "billableUsd": 0.016
+  }
+}

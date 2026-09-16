@@ -142,11 +142,17 @@ then exercised end to end from a separate machine.
 | screenshot | `import -window root` ✅ | `screencapture -x` ✅ | `CopyFromScreen` ✅ |
 | synthetic input | `xdotool` ✅ | CGEvent via Swift ✅ | `SendInput` + SendKeys ✅ |
 | UI tree | X11 window list ✅ | System Events ✅ | UI Automation ✅ |
-| video | `ffmpeg x11grab` ✅ | `screencapture -v` ✅ | frame sequence |
-| live picture in a browser | KasmVNC ✅ | built-in VNC + noVNC | TightVNC + noVNC |
-| tunnel | cloudflared ✅ | cloudflared ✅ | cloudflared |
+| video | `ffmpeg x11grab` ✅ | `screencapture -v` ✅ | frame sequence ✅ |
+| live picture in a browser | KasmVNC ✅ | built-in VNC + noVNC ✅ | TightVNC + noVNC ✅ |
+| tunnel | cloudflared ✅ | cloudflared ✅ | cloudflared ✅ |
+| interactive session, end to end | ✅ | ✅ | ✅ |
+| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35049009011) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35050143870) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35051228635) |
 
-✅ means it was run and the output was inspected, not that it should work.
+✅ means it was run and the output was inspected, not that it should work. Each
+unattended run ends with an assertion read back off the machine — not from the
+screenshot — that two typed lines really became two lines.
+
+![Notepad on a Windows Server 2025 runner, typed into by an unattended flow](docs/evidence/windows-flow-after-typing.png)
 
 macOS needed no accessibility prompt: `launchctl managername` reports `Aqua`,
 `screencapture` returns a real frame with the menu bar and Dock, and System
@@ -177,6 +183,16 @@ Four things that only showed up by running it:
   `tell application "Foo"` in flows; the automatic dismissal is a safety net, not
   something to rely on.
 
+On Windows, two things make the difference between "the primitives work" and
+"a flow works":
+
+- **The runner's own agent console sits on top of the desktop** and eats every
+  click and keystroke aimed at anything underneath it. The session minimises it
+  at start.
+- **Windows refuses to let a background process take focus**, so
+  `SetForegroundWindow` returns false. `vsim focus <title>` goes through the
+  shell's `AppActivate`, which is allowed.
+
 ### Known rough edges
 
 - **The `acceptance` environment has no required reviewers configured here**, so
@@ -187,6 +203,10 @@ Four things that only showed up by running it:
   Assert on structure, not on exact prose.
 - **A freshly focused window drops the first keystrokes.** Wait after a click
   before typing.
+- **`bare notepad` does not resolve under PowerShell 7 on Server 2025.** Use the
+  full path.
+- **UI Automation's `ValuePattern` does not reach the document** in the WinUI
+  Notepad that ships with Server 2025. Read the text back through the clipboard.
 
 ## What will bite you
 
