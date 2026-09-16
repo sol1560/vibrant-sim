@@ -10,6 +10,8 @@ export type FlowStep = {
 	move?: [number, number]
 	type?: string
 	key?: string
+	/** Windows only: bring a window to the front before interacting with it. */
+	focus?: string
 	screenshot?: string
 	wait?: number
 	/** Turns a step into an assertion; a miss fails the run. */
@@ -30,6 +32,7 @@ function describe(step: FlowStep): string {
 	if (step.move) return `move ${step.move.join(',')}`
 	if (step.type !== undefined) return `type ${step.type.length} chars`
 	if (step.key) return `key ${step.key}`
+	if (step.focus) return `focus ${step.focus}`
 	if (step.screenshot) return `screenshot ${step.screenshot}`
 	if (step.wait) return `wait ${step.wait}ms`
 	return 'noop'
@@ -91,6 +94,7 @@ export async function runFlow(
 			if (step.move) await session.move(step.move[0], step.move[1])
 			if (step.type !== undefined) await session.type(step.type)
 			if (step.key) await session.key(step.key)
+			if (step.focus) await session.focus(step.focus)
 			if (step.wait) await new Promise((r) => setTimeout(r, step.wait))
 			if (step.screenshot) {
 				const file = join('screenshots', `${String(index).padStart(3, '0')}-${step.screenshot}.png`)

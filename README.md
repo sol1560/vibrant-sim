@@ -153,31 +153,40 @@ macOS needed no accessibility prompt: `launchctl managername` reports `Aqua`,
 Events answers `osascript`. That contradicts the common claim that headless
 macOS GUI automation on a hosted runner is unsolved.
 
-Here is a TextEdit document on a hosted macOS runner, typed into with synthetic
-CGEvent keystrokes from another machine:
+Here is a TextEdit document on a hosted macOS runner, produced by an unattended
+`vsim run`: two lines typed with synthetic CGEvent keystrokes, with a
+programmatic assertion that the Return actually produced a second line
+([run](https://github.com/sol1560/vibrant-sim/actions/runs/35050143870)).
 
-![TextEdit on a macOS runner, typed into remotely](docs/evidence/macos-textedit-typed.png)
+![TextEdit on a macOS runner, typed into by an unattended flow](docs/evidence/macos-flow-after-typing.png)
 
-Two things that only showed up by running it:
+Four things that only showed up by running it:
 
 - **cloudflared prints a tunnel URL before the tunnel routes.** Waiting for the
   URL is not enough; you have to wait for a registered connection.
 - **A macOS runner cannot resolve its own trycloudflare hostname.** A tunnel that
   works perfectly from outside looks dead from the inside, so the runner does not
   try to check its own tunnel.
+- **CGEvent delivery is asynchronous.** Exiting straight after posting loses the
+  keystroke; three Return presses produced two newlines until the helper waited.
+- **The first cross-app Apple Event raises a modal** asking to allow controlling
+  that app, and it blocks the `osascript` that triggered it. Nothing answers it
+  on a runner, so an unattended flow hangs. Synthetic input needs no
+  authorisation and System Events can read the dialog, so the session clicks the
+  button itself. Prefer `open -a` and System Events over
+  `tell application "Foo"` in flows; the automatic dismissal is a safety net, not
+  something to rely on.
 
 ### Known rough edges
 
-- **Windows is implemented but not yet exercised end to end.** The primitives are
-  all verified on a runner — screenshot, SendInput, UI Automation, RDP enabled,
-  TightVNC listening on 5900 — but no full session has been driven through the
-  tunnel yet.
 - **The `acceptance` environment has no required reviewers configured here**, so
   the gate currently passes straight through. Add reviewers in
   *Settings → Environments → acceptance* to make it block. That setting cannot be
   made from a GitHub App token.
 - **TextEdit autocapitalises**, so a typed `line one` arrives as `Line one`.
   Assert on structure, not on exact prose.
+- **A freshly focused window drops the first keystrokes.** Wait after a click
+  before typing.
 
 ## What will bite you
 

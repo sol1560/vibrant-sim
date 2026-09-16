@@ -9,6 +9,7 @@
 // ships with no authentication at all, and the built-in VNC servers on macOS
 // and Windows are no better, so nothing reaches them without the pairing key.
 
+import { spawn } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
@@ -86,7 +87,19 @@ async function stopRecording() {
 	clearInterval(frameLoop.timer)
 	frameLoop = null
 	const frames = readdirSync(frameDir).length
-	return { kind: 'frame-sequence', path: target, frameDir, frames }
+
+	// Encode here when ffmpeg is around so the caller gets a video either way;
+	// the frames stay behind as a fallback when it is not.
+	const encoded = await new Promise((resolve) => {
+		const ff = spawn('ffmpeg', ['-y', '-framerate', '2', '-i', join(frameDir, '%05d.png'),
+			'-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', target], { stdio: 'ignore' })
+		ff.on('error', () => resolve(false))
+		ff.on('exit', (code) => resolve(code === 0 && existsSync(target)))
+	})
+
+	return encoded
+		? { kind: 'frame-sequence', path: target, frames, bytes: statSync(target).size }
+		: { kind: 'frame-sequence', path: null, frameDir, frames, note: 'ffmpeg unavailable; frames kept as-is' }
 }
 
 function keyMatches(candidate) {
@@ -148,6 +161,9 @@ async function handleApi(req, res, url) {
 				return json(res, 200, await driver.exec(body.command ?? ''))
 			case 'tree':
 				return json(res, 200, await driver.tree())
+			case 'focus':
+				if (!driver.focus) return json(res, 501, { error: `focus is not implemented on ${PLATFORM}` })
+				return json(res, 200, await driver.focus(body.title ?? ''))
 			case 'record/start':
 				return json(res, 200, await startRecording(body.name ?? 'session'))
 			case 'record/stop':

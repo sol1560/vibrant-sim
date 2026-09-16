@@ -21,6 +21,9 @@ using System.Runtime.InteropServices;
 public static class VsimInput {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    public const int MINIMIZE = 6, RESTORE = 9;
     const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004;
     const uint RIGHTDOWN = 0x0008, RIGHTUP = 0x0010;
     const uint MIDDLEDOWN = 0x0020, MIDDLEUP = 0x0040;
@@ -40,6 +43,28 @@ public static class VsimInput {
 function Get-Bounds { [System.Windows.Forms.Screen]::PrimaryScreen.Bounds }
 
 switch ($Action) {
+    'prepare' {
+        # The runner's own agent console sits on top of the desktop and swallows
+        # every click and keystroke aimed at an app underneath it. Get it out of
+        # the way once, at session start, rather than making every flow do it.
+        Get-Process |
+            Where-Object { $_.MainWindowTitle -like '*HostedComputeAgent*' -or $_.MainWindowTitle -like '*hosted-compute-agent*' } |
+            ForEach-Object { [void][VsimInput]::ShowWindow($_.MainWindowHandle, [VsimInput]::MINIMIZE) }
+        $b = Get-Bounds
+        @{ os = 'windows'; display = 'session-interactive'; width = $b.Width; height = $b.Height } |
+            ConvertTo-Json -Compress
+    }
+    'focus' {
+        # Windows blocks a background process from stealing focus, so
+        # SetForegroundWindow alone fails. AppActivate goes through the shell,
+        # which is allowed.
+        $p = Get-Process | Where-Object { $_.MainWindowTitle -like "*$Arg1*" } | Select-Object -First 1
+        if (-not $p) { throw "no window matching: $Arg1" }
+        [void][VsimInput]::ShowWindow($p.MainWindowHandle, [VsimInput]::RESTORE)
+        [void][VsimInput]::SetForegroundWindow($p.MainWindowHandle)
+        [void](New-Object -ComObject WScript.Shell).AppActivate($p.Id)
+        @{ focused = $p.MainWindowTitle } | ConvertTo-Json -Compress
+    }
     'info' {
         $b = Get-Bounds
         @{ os = 'windows'; display = 'session0-interactive'; width = $b.Width; height = $b.Height } |

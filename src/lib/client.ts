@@ -63,6 +63,11 @@ export class SessionClient {
 		return this.#json<{ kind: string; windows: unknown[] }>('tree')
 	}
 
+	/** Windows only: bring a window to the front by a substring of its title. */
+	focus(title: string) {
+		return this.#json<{ focused: string }>('focus', { title })
+	}
+
 	startRecording(name: string) {
 		return this.#json<{ kind: string; path: string }>('record/start', { name })
 	}

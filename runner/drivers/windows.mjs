@@ -21,7 +21,12 @@ async function ps(action, ...args) {
 }
 
 export async function prepare() {
-	await ps('info')
+	await ps('prepare')
+}
+
+/** Brings a window to the front by a substring of its title. */
+export async function focus(title) {
+	return JSON.parse(await ps('focus', title))
 }
 
 export async function info() {

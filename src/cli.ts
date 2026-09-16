@@ -300,6 +300,7 @@ const USAGE = `vsim — on-demand cloud machines with a screen
   vsim key    [id] <combo>
   vsim exec   [id] <command>
   vsim tree   [id]
+  vsim focus  [id] <window title>   (Windows)
   vsim record [id] start|stop [--name run]
 
   vsim run --flow checks.json [--os linux] [--session id] [--evidence dir]
@@ -346,6 +347,11 @@ async function main(): Promise<void> {
 		}
 		case 'tree':
 			return console.log(JSON.stringify(await client(resolveSession(positional[0])).tree(), null, 2))
+		case 'focus': {
+			const record = resolveSession(positional.length > 1 ? positional[0] : undefined)
+			const title = (positional.length > 1 ? positional.slice(1) : positional).join(' ')
+			return console.log(JSON.stringify(await client(record).focus(title)))
+		}
 		case 'record': {
 			const action = positional.pop()
 			const c = client(resolveSession(positional[0]))

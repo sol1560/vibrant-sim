@@ -1,0 +1,38 @@
+{
+  "name": "windows desktop smoke",
+  "steps": [
+    {
+      "name": "the session is interactive",
+      "exec": "[System.Environment]::UserInteractive",
+      "expect": { "code": 0, "contains": "True" }
+    },
+    { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
+    {
+      "name": "launch Notepad",
+      "comment": "Full path on purpose: bare `notepad` does not resolve under PowerShell 7 on Server 2025.",
+      "exec": "Start-Process -FilePath \"C:\\Windows\\System32\\notepad.exe\"; Start-Sleep 4; (Get-Process notepad | Measure-Object).Count",
+      "expect": { "code": 0, "contains": "1" }
+    },
+    {
+      "name": "bring it to the front",
+      "comment": "The runner's own agent console covers the desktop and eats input aimed at anything under it.",
+      "focus": "Notepad"
+    },
+    { "wait": 2000 },
+    { "name": "click into the document", "click": [462, 337] },
+    { "comment": "A freshly focused window drops the first keystrokes.", "wait": 2000 },
+    { "name": "type the first line", "type": "line one" },
+    { "wait": 600 },
+    { "name": "press Return", "key": "Return" },
+    { "wait": 600 },
+    { "name": "type the second line", "type": "line two" },
+    { "wait": 1200 },
+    { "name": "capture the typed document", "screenshot": "after-typing" },
+    {
+      "name": "both lines landed, so Return was not swallowed",
+      "comment": "Read the text back out of the control through UI Automation rather than trusting the screenshot.",
+      "exec": "Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes; $root=[System.Windows.Automation.AutomationElement]::RootElement; $c=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'Notepad'); $w=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$c); $doc=$w.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Document))); $v=$doc.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value; ($v -split \"`r`n\" | Where-Object { $_ -match 'line' } | Measure-Object).Count",
+      "expect": { "code": 0, "contains": "2" }
+    }
+  ]
+}
