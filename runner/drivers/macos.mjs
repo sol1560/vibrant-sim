@@ -90,6 +90,10 @@ case "key":
 default:
   exit(2)
 }
+
+// CGEvent delivery is asynchronous. Without this the process can exit before
+// the tap has dispatched the last event, and the keystroke is silently lost.
+usleep(60000)
 `
 
 export async function prepare() {
