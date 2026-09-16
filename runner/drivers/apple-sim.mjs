@@ -60,10 +60,16 @@ export async function prepare() {
 	if (device) return
 	device = await pickDevice()
 	await simctl(['boot', device.udid]).catch(() => {}) // already booted is fine
+
+	// Start Simulator.app now and let it put its window up while the device
+	// finishes booting and the input helper compiles. Doing it afterwards left
+	// the window with no time to appear.
+	const simulatorApp = run('open', ['-a', 'Simulator']).catch(() => {})
+
 	await simctl(['bootstatus', device.udid, '-b'])
 	await prepareInput()
-	// The window only exists once Simulator.app is running, and taps need it.
-	await run('open', ['-a', 'Simulator'])
+	await simulatorApp
+	// Taps are screen clicks mapped into that window, so it has to be there.
 	await waitForWindow()
 }
 
