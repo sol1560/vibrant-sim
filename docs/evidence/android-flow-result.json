@@ -1,0 +1,154 @@
+{
+  "schema": "vibrant-sim/result@1",
+  "runId": "local-android",
+  "target": "gha:android",
+  "os": {
+    "family": "android",
+    "image": "gha:android",
+    "display": "15 (api 35)",
+    "width": 1080,
+    "height": 2400
+  },
+  "status": "passed",
+  "startedAt": "2026-09-16T06:06:41.038Z",
+  "durationMs": 17197,
+  "steps": [
+    {
+      "name": "the emulator finished booting",
+      "status": "passed",
+      "durationMs": 34,
+      "action": "exec getprop sys.boot_completed",
+      "detail": "1\n"
+    },
+    {
+      "name": "hardware acceleration is on",
+      "status": "passed",
+      "durationMs": 44,
+      "action": "exec getprop ro.kernel.qemu.gles; getprop ro.hardware",
+      "detail": "\nranchu\n"
+    },
+    {
+      "name": "capture the home screen",
+      "status": "passed",
+      "durationMs": 2582,
+      "action": "screenshot home",
+      "evidence": [
+        "screenshots/002-home.png"
+      ]
+    },
+    {
+      "name": "open Settings",
+      "status": "passed",
+      "durationMs": 196,
+      "action": "exec am start -a android.settings.SETTINGS",
+      "detail": "Starting: Intent { act=android.settings.SETTINGS }\n"
+    },
+    {
+      "name": "wait 4000ms",
+      "status": "passed",
+      "durationMs": 4001,
+      "action": "wait 4000ms"
+    },
+    {
+      "name": "capture Settings",
+      "status": "passed",
+      "durationMs": 983,
+      "action": "screenshot settings",
+      "evidence": [
+        "screenshots/005-settings.png"
+      ]
+    },
+    {
+      "name": "Settings is really in the foreground",
+      "status": "passed",
+      "durationMs": 71,
+      "action": "exec dumpsys window displays | grep -m1 -i 'mCurrentFocus'",
+      "detail": "  mCurrentFocus=Window{df4ddf6 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}\n\nFailed to write while dumping service window: Broken pipe\n"
+    },
+    {
+      "name": "type into the search box",
+      "status": "passed",
+      "durationMs": 260,
+      "action": "exec am start -a com.android.settings.action.SETTINGS_SEARCH 2>/dev/null || am start -n com.android.settings/.search.SearchActivity",
+      "detail": "Starting: Intent { act=com.android.settings.action.SETTINGS_SEARCH }\n"
+    },
+    {
+      "name": "wait 3000ms",
+      "status": "passed",
+      "durationMs": 3001,
+      "action": "wait 3000ms"
+    },
+    {
+      "name": "type",
+      "status": "passed",
+      "durationMs": 531,
+      "action": "type 9 chars"
+    },
+    {
+      "name": "wait 2500ms",
+      "status": "passed",
+      "durationMs": 2502,
+      "action": "wait 2500ms"
+    },
+    {
+      "name": "capture the search",
+      "status": "passed",
+      "durationMs": 612,
+      "action": "screenshot search",
+      "evidence": [
+        "screenshots/011-search.png"
+      ]
+    },
+    {
+      "name": "the text really reached the device",
+      "status": "passed",
+      "durationMs": 2380,
+      "action": "exec uiautomator dump /sdcard/vsim-check.xml >/dev/null 2>&1 && grep -ci 'bluetooth' /sdcard/vsim-check.xml",
+      "detail": "1\n"
+    }
+  ],
+  "checks": [
+    {
+      "id": "the emulator finished booting",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "hardware acceleration is on",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "open Settings",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "Settings is really in the foreground",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "type into the search box",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "the text really reached the device",
+      "kind": "assert",
+      "status": "passed"
+    }
+  ],
+  "evidence": {
+    "screenshots": [
+      "screenshots/002-home.png",
+      "screenshots/005-settings.png",
+      "screenshots/011-search.png"
+    ],
+    "logs": []
+  },
+  "cost": {
+    "runnerMinutes": 1,
+    "billableUsd": 0.008
+  }
+}

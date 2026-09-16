@@ -72,6 +72,11 @@ export class SessionClient {
 		return this.#json<{ kind: string; windows: unknown[] }>('tree')
 	}
 
+	/** Clicks whatever the accessibility tree says carries this text. */
+	tapText(text: string, exact = false) {
+		return this.#json<{ tapped: string; x: number; y: number }>('tap/text', { text, exact })
+	}
+
 	/** Windows only: bring a window to the front by a substring of its title. */
 	focus(title: string) {
 		return this.#json<{ focused: string }>('focus', { title })

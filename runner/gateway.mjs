@@ -144,6 +144,41 @@ async function stopRecording() {
 	return { kind: 'frame-sequence', path: target, frames, bytes: statSync(target).size }
 }
 
+/**
+ * Clicks whatever the accessibility tree says carries this text.
+ *
+ * A flow written against pixel coordinates breaks the moment the device or the
+ * resolution changes. Where a tree exists, naming the thing is both stabler and
+ * easier to read.
+ */
+async function tapByText(text, exact) {
+	if (!text) throw new Error('tap/text needs text')
+	const needle = text.toLowerCase()
+	const { windows = [] } = await driver.tree()
+
+	const labelOf = (node) => String(node.text ?? node.label ?? node.name ?? '')
+	const matches = (node) => {
+		const label = labelOf(node).toLowerCase()
+		if (!label) return false
+		return exact ? label === needle : label.includes(needle)
+	}
+
+	// Prefer something the tree says is actually tappable.
+	const candidates = windows.filter(matches)
+	const target = candidates.find((n) => n.clickable) ?? candidates[0]
+	if (!target) {
+		const seen = windows.map(labelOf).filter(Boolean).slice(0, 25)
+		throw new Error(`nothing matching ${JSON.stringify(text)} on screen. Visible: ${seen.join(' | ') || 'nothing labelled'}`)
+	}
+
+	const [x, y] = target.centre ?? [
+		Math.round(target.x + (target.width ?? 0) / 2),
+		Math.round(target.y + (target.height ?? 0) / 2),
+	]
+	await driver.click(x, y, 'left')
+	return { tapped: labelOf(target), x, y }
+}
+
 function keyMatches(candidate) {
 	if (typeof candidate !== 'string' || candidate.length !== PAIRING_KEY.length) return false
 	return timingSafeEqual(Buffer.from(candidate), Buffer.from(PAIRING_KEY))
@@ -222,6 +257,8 @@ async function handleApi(req, res, url) {
 				return json(res, 200, await driver.exec(body.command ?? ''))
 			case 'tree':
 				return json(res, 200, await driver.tree())
+			case 'tap/text':
+				return json(res, 200, await tapByText(body.text ?? '', body.exact === true))
 			case 'focus':
 				if (!driver.focus) return json(res, 501, { error: `focus is not implemented on ${PLATFORM}` })
 				return json(res, 200, await driver.focus(body.title ?? ''))
