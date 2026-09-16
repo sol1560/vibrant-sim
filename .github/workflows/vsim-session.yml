@@ -70,7 +70,6 @@ jobs:
         run: |
           set -euo pipefail
           node runner/session.mjs &
-          echo $! > .vsim.pid
           # Publish the handle as soon as it exists so the caller can attach
           # while the session is still running.
           for i in $(seq 1 180); do
@@ -90,10 +89,10 @@ jobs:
       - name: Hold the session open
         shell: bash
         run: |
-          pid=$(cat .vsim.pid)
-          while kill -0 "$pid" 2>/dev/null; do sleep 5; done
-          echo "session process exited"
-          cat .vsim/ended.json 2>/dev/null || true
+          # Watch for the session's own marker rather than polling a pid:
+          # `kill -0` does not track a detached process under Git Bash.
+          while [ ! -f .vsim/ended.json ]; do sleep 5; done
+          cat .vsim/ended.json
 
       - name: Collect evidence
         if: always()

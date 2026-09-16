@@ -29,6 +29,27 @@ mkdirSync(OUT_DIR, { recursive: true })
 const children = []
 const log = (...args) => console.log('[vsim]', ...args)
 
+// The workflow watches for this file instead of polling a pid: `kill -0` is not
+// reliable under Git Bash on Windows, and a job that cannot tell the session
+// ended holds the runner until the TTL runs out.
+let finished = false
+function finish(reason) {
+	if (finished) return
+	finished = true
+	try {
+		writeFileSync(join(OUT_DIR, 'ended.json'), JSON.stringify({ reason, endedAt: new Date().toISOString() }, null, 2))
+	} catch { /* the job timeout is the backstop */ }
+	for (const child of children) child.kill('SIGTERM')
+}
+
+process.on('exit', () => finish('process exited'))
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { finish(signal); process.exit(0) })
+process.on('uncaughtException', (err) => {
+	console.error('[vsim] fatal:', err?.message ?? err)
+	finish(`fatal: ${err?.message ?? err}`)
+	process.exit(1)
+})
+
 function background(command, args, options = {}) {
 	const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
 	children.push(child)
@@ -248,5 +269,4 @@ while (Date.now() < expiry) {
 }
 
 log(`session ending: ${reason}`)
-writeFileSync(join(OUT_DIR, 'ended.json'), JSON.stringify({ reason, endedAt: new Date().toISOString() }, null, 2))
-for (const child of children) child.kill('SIGTERM')
+finish(reason)

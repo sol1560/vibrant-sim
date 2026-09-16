@@ -42,7 +42,6 @@ jobs:
         run: |
           set -euo pipefail
           node runner/session.mjs &
-          echo $! > .vsim.pid
           for i in $(seq 1 240); do
             [ -f .vsim/handle.json ] && break
             sleep 2
@@ -66,9 +65,13 @@ jobs:
         shell: bash
         run: |
           touch .vsim/stop
-          pid=$(cat .vsim.pid 2>/dev/null || echo)
-          [ -n "$pid" ] && { for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 2; done; }
-          exit 0
+          # Give the session a moment to record why it stopped and flush any
+          # recording; the artifact step runs next either way.
+          for i in $(seq 1 30); do
+            [ -f .vsim/ended.json ] && break
+            sleep 2
+          done
+          cat .vsim/ended.json 2>/dev/null || echo "session did not record an ending"
 
       - name: Publish the evidence package
         if: always()
