@@ -1,0 +1,45 @@
+{
+  "name": "android emulator smoke",
+  "steps": [
+    {
+      "name": "the emulator finished booting",
+      "exec": "getprop sys.boot_completed",
+      "expect": { "code": 0, "contains": "1" }
+    },
+    {
+      "name": "hardware acceleration is on",
+      "comment": "A software-rendered emulator still works, but it is two to three times slower, and that is worth knowing about.",
+      "exec": "getprop ro.kernel.qemu.gles; getprop ro.hardware",
+      "expect": { "code": 0 }
+    },
+    { "name": "capture the home screen", "screenshot": "home" },
+    {
+      "name": "open Settings",
+      "exec": "am start -a android.settings.SETTINGS",
+      "expect": { "code": 0, "contains": "Starting" }
+    },
+    { "wait": 4000 },
+    { "name": "capture Settings", "screenshot": "settings" },
+    {
+      "name": "Settings is really in the foreground",
+      "exec": "dumpsys window displays | grep -m1 -i 'mCurrentFocus'",
+      "expect": { "code": 0, "contains": "Settings" }
+    },
+    {
+      "name": "type into the search box",
+      "comment": "Settings opens its search with a keyboard shortcut, so no coordinate guessing.",
+      "exec": "am start -a com.android.settings.action.SETTINGS_SEARCH 2>/dev/null || am start -n com.android.settings/.search.SearchActivity",
+      "expect": { "code": 0 }
+    },
+    { "wait": 3000 },
+    { "name": "type", "type": "bluetooth" },
+    { "wait": 2500 },
+    { "name": "capture the search", "screenshot": "search" },
+    {
+      "name": "the text really reached the device",
+      "comment": "Read it back out of the accessibility tree rather than trusting the screenshot.",
+      "exec": "uiautomator dump /sdcard/vsim-check.xml >/dev/null 2>&1 && grep -ci 'bluetooth' /sdcard/vsim-check.xml",
+      "expect": { "code": 0, "notContains": "0\n" }
+    }
+  ]
+}

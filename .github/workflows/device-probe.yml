@@ -101,6 +101,18 @@ jobs:
         run: |
           mkdir -p out
           xcrun simctl list devices available --json > out/devices.json
+          # macOS has no `timeout`, and `simctl bootstatus` waits forever, so
+          # every wait here is a background job that gets killed.
+          bounded() {
+            local limit=$1; shift
+            "$@" & local pid=$!
+            local waited=0
+            while kill -0 $pid 2>/dev/null; do
+              [ $waited -ge $limit ] && { kill -9 $pid 2>/dev/null; echo "TIMED OUT after ${limit}s: $*"; return 124; }
+              sleep 2; waited=$((waited + 2))
+            done
+            wait $pid
+          }
           for family in iOS watchOS tvOS xrOS; do
             udid=$(jq -r --arg f "$family" \
               '[.devices | to_entries[] | select(.key | test($f)) | .value[] | select(.isAvailable)] | .[0].udid // empty' \
@@ -110,9 +122,9 @@ jobs:
               out/devices.json)
             if [ -z "$udid" ]; then echo "$family: NONE INSTALLED"; continue; fi
             echo "=== $family: $name ($udid) ==="
-            xcrun simctl boot "$udid" 2>&1 | tail -1 || true
-            xcrun simctl bootstatus "$udid" -b 2>&1 | tail -1 || true
-            xcrun simctl io "$udid" screenshot --type=png "out/$family.png" \
+            bounded 90 xcrun simctl boot "$udid" || true
+            bounded 240 xcrun simctl bootstatus "$udid" -b || echo "$family BOOT_TIMEOUT"
+            bounded 60 xcrun simctl io "$udid" screenshot --type=png "out/$family.png" \
               && echo "$family SCREENSHOT_BYTES=$(stat -f%z out/$family.png)" || echo "$family SCREENSHOT_FAIL"
             # No `timeout` on macOS; run it in the background and interrupt it.
             xcrun simctl io "$udid" recordVideo --codec=h264 --force "out/$family.mp4" &
@@ -122,14 +134,14 @@ jobs:
             wait $rec 2>/dev/null || true
             sleep 2
             [ -s "out/$family.mp4" ] && echo "$family RECORD_BYTES=$(stat -f%z out/$family.mp4)" || echo "$family RECORD_FAIL"
-            xcrun simctl shutdown "$udid" 2>&1 | tail -1 || true
+            bounded 60 xcrun simctl shutdown "$udid" || true
           done
 
       - name: Can the simulator window be driven from the desktop
         run: |
           udid=$(jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.isAvailable)] | .[0].udid // empty' out/devices.json)
           [ -z "$udid" ] && { echo "no iOS device"; exit 0; }
-          xcrun simctl boot "$udid" 2>&1 | tail -1 || true
+          xcrun simctl boot "$udid" 2>/dev/null || true
           open -a Simulator
           sleep 25
           osascript -e 'tell application "System Events" to tell process "Simulator" to get {name, position, size} of every window' 2>&1 | head -3 \
