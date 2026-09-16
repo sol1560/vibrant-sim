@@ -34,7 +34,7 @@
   <label><input type="checkbox" id="drive"> click and type here</label>
   <label>fps <input type="range" id="fps" min="1" max="6" value="2" style="width:70px"></label>
 </header>
-<main><img id="screen" alt="the session's screen"></main>
+<main><img id="screen" tabindex="0" alt="the session's screen"></main>
 <footer id="hint">Read-only. Tick “click and type here” to drive the machine yourself.</footer>
 
 <script>
@@ -55,6 +55,7 @@ const dot = document.getElementById('dot')
 const sizeEl = document.getElementById('size')
 const drive = document.getElementById('drive')
 const fps = document.getElementById('fps')
+const hint = document.getElementById('hint')
 
 let natural = { width: 0, height: 0 }
 let misses = 0
@@ -96,8 +97,18 @@ function screenPoint(event) {
 
 screen.addEventListener('click', (event) => {
   if (!drive.checked) return
+  // Take focus off the header controls, or every keystroke would be treated as
+  // someone still fiddling with the checkbox and dropped.
+  screen.focus()
   const { x, y } = screenPoint(event)
   api('click', { x, y })
+})
+
+drive.addEventListener('change', () => {
+  if (drive.checked) screen.focus()
+  hint.textContent = drive.checked
+    ? 'Driving. Clicks and keystrokes go to the machine; untick to stop.'
+    : 'Read-only. Tick “click and type here” to drive the machine yourself.'
 })
 
 screen.addEventListener('contextmenu', (event) => {
@@ -114,7 +125,8 @@ const NAMED_KEYS = {
 
 window.addEventListener('keydown', (event) => {
   if (!drive.checked) return
-  if (event.target instanceof HTMLInputElement) return
+  // Let the header's own controls work normally.
+  if (document.activeElement instanceof HTMLInputElement) return
   const named = NAMED_KEYS[event.key]
   if (named) {
     event.preventDefault()

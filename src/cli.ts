@@ -74,10 +74,19 @@ async function sessionEnd(positional: string[]): Promise<void> {
 	try {
 		await client(record).stop()
 		console.log(`asked session ${record.id} to shut down`)
-	} catch (err) {
-		console.error(`gateway did not answer (${(err as Error).message}); cancelling the run instead`)
+	} catch {
+		// The gateway is unreachable: either the machine is already gone or it
+		// is wedged. Cancelling the run covers the second case; a run that has
+		// already finished covers the first, and is not a failure.
 		const [owner, repo] = record.repo.split('/')
-		await new GitHub({ owner: owner!, repo: repo! }, resolveToken()).cancelRun(record.runId)
+		try {
+			await new GitHub({ owner: owner!, repo: repo! }, resolveToken()).cancelRun(record.runId)
+			console.log(`session ${record.id} was unreachable; cancelled run ${record.runId}`)
+		} catch (cancelErr) {
+			const message = (cancelErr as Error).message
+			if (!message.includes('Cannot cancel a workflow run that is completed')) throw cancelErr
+			console.log(`session ${record.id} had already finished`)
+		}
 	}
 	forgetSession(record.id)
 }
