@@ -28,10 +28,13 @@
     { "name": "type the second line", "type": "line two" },
     { "wait": 1200 },
     { "name": "capture the typed document", "screenshot": "after-typing" },
+    { "name": "select all", "key": "ctrl+a" },
+    { "name": "copy", "key": "ctrl+c" },
+    { "wait": 800 },
     {
       "name": "both lines landed, so Return was not swallowed",
-      "comment": "Read the text back out of the control through UI Automation rather than trusting the screenshot.",
-      "exec": "Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes; $root=[System.Windows.Automation.AutomationElement]::RootElement; $c=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'Notepad'); $w=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$c); $doc=$w.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Document))); $v=$doc.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value; ($v -split \"`r`n\" | Where-Object { $_ -match 'line' } | Measure-Object).Count",
+      "comment": "Read the text back through the clipboard. UI Automation's ValuePattern does not reach the document in the WinUI Notepad on Server 2025.",
+      "exec": "((Get-Clipboard -Raw) -split \"`r`n\" | Where-Object { $_ -match 'line' } | Measure-Object).Count",
       "expect": { "code": 0, "contains": "2" }
     }
   ]
