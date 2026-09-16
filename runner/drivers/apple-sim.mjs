@@ -88,20 +88,23 @@ async function waitForWindow(timeoutMs = 90_000) {
  * or toolbar is not something worth guessing at.
  */
 async function windowRect() {
-	// Variable names matter here: `ip` is a reserved word in AppleScript, and
+	// Two things to get right here. `tell ... to tell ...` is the single-line
+	// form and cannot take a multi-line block, and `ip` is a reserved word, so
 	// assigning to it fails with "Can't set IP to ...".
 	const script = `
-    tell application "System Events" to tell process "Simulator"
-      set theWindow to window 1
-      set windowPos to position of theWindow
-      set windowSize to size of theWindow
-      try
-        set innerView to group 1 of theWindow
-        set innerPos to position of innerView
-        set innerSize to size of innerView
-        return "inner|" & (item 1 of innerPos) & "," & (item 2 of innerPos) & "," & (item 1 of innerSize) & "," & (item 2 of innerSize)
-      end try
-      return "window|" & (item 1 of windowPos) & "," & (item 2 of windowPos) & "," & (item 1 of windowSize) & "," & (item 2 of windowSize)
+    tell application "System Events"
+      tell process "Simulator"
+        set theWindow to window 1
+        set windowPos to position of theWindow
+        set windowSize to size of theWindow
+        try
+          set innerView to group 1 of theWindow
+          set innerPos to position of innerView
+          set innerSize to size of innerView
+          return "inner|" & (item 1 of innerPos) & "," & (item 2 of innerPos) & "," & (item 1 of innerSize) & "," & (item 2 of innerSize)
+        end try
+        return "window|" & (item 1 of windowPos) & "," & (item 2 of windowPos) & "," & (item 1 of windowSize) & "," & (item 2 of windowSize)
+      end tell
     end tell`
 	const { stdout } = await run('osascript', ['-e', script], { timeout: 20_000 })
 	const [kind, numbers] = stdout.trim().split('|')
