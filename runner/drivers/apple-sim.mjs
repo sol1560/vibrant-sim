@@ -116,7 +116,21 @@ async function windowRect() {
         return "window|" & (item 1 of windowPos) & "," & (item 2 of windowPos) & "," & (item 1 of windowSize) & "," & (item 2 of windowSize)
       end tell
     end tell`
-	const { stdout } = await run('osascript', ['-e', script], { timeout: 20_000 })
+	let stdout = ''
+	let last = null
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			;({ stdout } = await run('osascript', ['-e', script], { timeout: 20_000 }))
+			break
+		} catch (err) {
+			// System Events intermittently refuses a window it answered a
+			// moment earlier; a retry is cheaper than failing the call.
+			last = err
+			await new Promise((r) => setTimeout(r, 1500))
+		}
+	}
+	if (last && !stdout) throw last
+
 	const [kind, numbers] = stdout.trim().split('|')
 	if (!numbers) throw new Error('no Simulator window')
 	const [x, y, width, height] = numbers.split(',').map(Number)
@@ -156,11 +170,21 @@ export async function screenshot() {
 	}
 }
 
+// Neither the device resolution nor the window geometry changes during a
+// session, and asking for both on every tap meant a screenshot and an
+// AppleScript round trip per click — slow, and two more things to fail.
+let geometry = null
+
+async function deviceGeometry() {
+	if (geometry) return geometry
+	const { width, height } = pngSize(await screenshot())
+	geometry = { width, height, rect: await windowRect() }
+	return geometry
+}
+
 /** Device pixels in, macOS screen coordinates out. */
 async function toScreen(x, y) {
-	const png = await screenshot()
-	const { width, height } = pngSize(png)
-	const rect = await windowRect()
+	const { width, height, rect } = await deviceGeometry()
 	return {
 		x: Math.round(rect.x + (Number(x) / width) * rect.width),
 		y: Math.round(rect.y + (Number(y) / height) * rect.height),
@@ -213,7 +237,7 @@ export async function tree() {
 	if (!device) await prepare()
 	const { stdout } = await simctl(['listapps', device.udid], { encoding: 'utf8' }).catch(() => ({ stdout: '' }))
 	const apps = [...stdout.matchAll(/CFBundleIdentifier\s*=\s*"([^"]+)"/g)].map((m) => m[1])
-	const rect = await windowRect()
+	const { rect } = await deviceGeometry()
 	return {
 		kind: 'apple-simulator',
 		note: 'Apple exposes an app\'s accessibility tree only to XCUITest. Use a screenshot to decide where to tap.',
