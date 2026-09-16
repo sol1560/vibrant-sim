@@ -151,7 +151,7 @@ async function stopRecording() {
  * resolution changes. Where a tree exists, naming the thing is both stabler and
  * easier to read.
  */
-async function tapByText(text, exact, { attempts = 12, gapMs = 1500 } = {}) {
+async function tapByText(text, exact, { timeoutMs = 18_000, gapMs = 1500 } = {}) {
 	if (!text) throw new Error('tap/text needs text')
 	const needle = text.toLowerCase()
 	const labelOf = (node) => String(node.text ?? node.label ?? node.name ?? '')
@@ -163,10 +163,14 @@ async function tapByText(text, exact, { attempts = 12, gapMs = 1500 } = {}) {
 
 	let target = null
 	let windows = []
-	// A UI tree is a snapshot of something still moving: right after a screen
-	// change the dump can still describe the previous one.
-	for (let attempt = 0; attempt < attempts && !target; attempt++) {
-		if (attempt) await new Promise((r) => setTimeout(r, gapMs))
+	// Bounded by time, not by attempts: reading the tree takes milliseconds on
+	// Android and seconds on macOS, so a fixed number of tries means a wildly
+	// different wait per platform.
+	const deadline = Date.now() + timeoutMs
+	let first = true
+	while (!target && (first || Date.now() < deadline)) {
+		if (!first) await new Promise((r) => setTimeout(r, gapMs))
+		first = false
 		;({ windows = [] } = await driver.tree())
 		const candidates = windows.filter(matches)
 		// Prefer something the tree says is actually tappable.
@@ -216,7 +220,7 @@ async function tapUntil(text, exact, until, rounds = 3) {
 	for (let round = 0; round < rounds; round++) {
 		const tap = await tapByText(text, exact)
 		try {
-			await assertText(until, false, { attempts: 6 })
+			await assertText(until, false, { timeoutMs: 9000 })
 			return { ...tap, confirmed: until, rounds: round + 1 }
 		} catch (err) {
 			last = err
@@ -231,14 +235,17 @@ async function tapUntil(text, exact, until, rounds = 3) {
  * Grepping a dump for a word finds it anywhere on the page; this says which
  * element carries it, and lists what was actually visible when it does not.
  */
-async function assertText(text, exact, { attempts = 12, gapMs = 1500 } = {}) {
+async function assertText(text, exact, { timeoutMs = 18_000, gapMs = 1500 } = {}) {
 	if (!text) throw new Error('assert/text needs text')
 	const needle = text.toLowerCase()
 	const labelOf = (node) => String(node.text ?? node.label ?? node.name ?? '')
 
 	let windows = []
-	for (let attempt = 0; attempt < attempts; attempt++) {
-		if (attempt) await new Promise((r) => setTimeout(r, gapMs))
+	const deadline = Date.now() + timeoutMs
+	let first = true
+	while (first || Date.now() < deadline) {
+		if (!first) await new Promise((r) => setTimeout(r, gapMs))
+		first = false
 		;({ windows = [] } = await driver.tree())
 		const hit = windows.find((node) => {
 			const label = labelOf(node).toLowerCase()
@@ -251,8 +258,11 @@ async function assertText(text, exact, { attempts = 12, gapMs = 1500 } = {}) {
 	throw new Error(`${JSON.stringify(text)} is not on screen. Visible: ${seen.join(' | ') || 'nothing labelled'}`)
 }
 
-/** Lets a flow wait longer for a screen it knows is slow. */
-const opts = (body) => (body.timeoutMs ? { attempts: Math.ceil(Number(body.timeoutMs) / 1500) } : {})
+/**
+ * Lets a flow wait longer for a screen it knows is slow, capped so a request
+ * cannot outlive the client waiting on it.
+ */
+const opts = (body) => (body.timeoutMs ? { timeoutMs: Math.min(Number(body.timeoutMs), 150_000) } : {})
 
 function keyMatches(candidate) {
 	if (typeof candidate !== 'string' || candidate.length !== PAIRING_KEY.length) return false

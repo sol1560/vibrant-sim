@@ -16,7 +16,7 @@ export class SessionClient {
 				...(body ? { 'content-type': 'application/json' } : {}),
 			},
 			body: body ? JSON.stringify(body) : undefined,
-			signal: AbortSignal.timeout(120_000),
+			signal: AbortSignal.timeout(180_000),
 		})
 		if (!res.ok) throw new Error(`${action} -> ${res.status}: ${(await res.text()).slice(0, 300)}`)
 		return res
