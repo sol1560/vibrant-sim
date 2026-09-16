@@ -80,7 +80,8 @@ jobs:
           for s in window_animation_scale transition_animation_scale animator_duration_scale; do
             adb shell settings put global $s 0
           done
-          adb shell input keyevent 82 || true
+          # WAKEUP, not MENU: 82 opens the launcher's long-press menu.
+          adb shell input keyevent KEYCODE_WAKEUP || true
           adb shell wm dismiss-keyguard || true
           for i in $(seq 1 40); do
             focus=$(adb shell dumpsys window displays | grep -m1 -i mCurrentFocus || true)

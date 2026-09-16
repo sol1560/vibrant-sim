@@ -38,9 +38,12 @@ export async function prepare() {
 	for (const scale of ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']) {
 		await shell(`settings put global ${scale} 0`).catch(() => {})
 	}
-	await shell('input keyevent 82').catch(() => {})
+	// WAKEUP, not MENU: keyevent 82 opens the launcher's long-press menu and
+	// leaves the session staring at Wallpaper & style instead of the home screen.
+	await shell('input keyevent KEYCODE_WAKEUP').catch(() => {})
 	await shell('wm dismiss-keyguard').catch(() => {})
 	await settleLauncher()
+	await shell('input keyevent KEYCODE_HOME').catch(() => {})
 }
 
 /**
