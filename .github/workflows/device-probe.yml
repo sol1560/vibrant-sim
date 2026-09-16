@@ -113,9 +113,9 @@ jobs:
         if: always()
         with: { name: android-probe, path: out/, if-no-files-found: ignore }
 
-  apple:
+  apple-runtimes:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - name: Which runtimes are actually installed
         run: |
@@ -124,6 +124,11 @@ jobs:
           xcrun simctl list runtimes
           echo "--- devices by runtime ---"
           xcrun simctl list devices available
+
+  apple:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
 
       - name: Screenshot and record on every family present
         run: |
@@ -151,8 +156,8 @@ jobs:
             if [ -z "$udid" ]; then echo "$family: NONE INSTALLED"; continue; fi
             echo "=== $family: $name ($udid) ==="
             bounded 90 xcrun simctl boot "$udid" || true
-            bounded 240 xcrun simctl bootstatus "$udid" -b || echo "$family BOOT_TIMEOUT"
-            bounded 60 xcrun simctl io "$udid" screenshot --type=png "out/$family.png" \
+            bounded 150 xcrun simctl bootstatus "$udid" -b || echo "$family BOOT_TIMEOUT"
+            bounded 45 xcrun simctl io "$udid" screenshot --type=png "out/$family.png" \
               && echo "$family SCREENSHOT_BYTES=$(stat -f%z out/$family.png)" || echo "$family SCREENSHOT_FAIL"
             # No `timeout` on macOS; run it in the background and interrupt it.
             xcrun simctl io "$udid" recordVideo --codec=h264 --force "out/$family.mp4" &
@@ -162,7 +167,7 @@ jobs:
             wait $rec 2>/dev/null || true
             sleep 2
             [ -s "out/$family.mp4" ] && echo "$family RECORD_BYTES=$(stat -f%z out/$family.mp4)" || echo "$family RECORD_FAIL"
-            bounded 60 xcrun simctl shutdown "$udid" || true
+            bounded 45 xcrun simctl shutdown "$udid" || true
           done
 
       - name: Can the simulator window be driven from the desktop
