@@ -187,6 +187,11 @@ async function handleApi(req, res, url) {
 			return json(res, body.ok ? 200 : 503, body)
 		}
 
+		// exec is plain shell on the host and does not need the driver, so leave
+		// it working when the driver failed; otherwise a broken session cannot
+		// be diagnosed from the outside.
+		if (action === 'exec') return json(res, 200, await driver.exec(body.command ?? ''))
+
 		// Everything else needs a working driver, so wait for it rather than
 		// failing on a session that is simply still booting.
 		await ready

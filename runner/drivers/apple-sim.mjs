@@ -67,18 +67,22 @@ export async function prepare() {
 	await waitForWindow()
 }
 
-async function waitForWindow(timeoutMs = 90_000) {
+async function waitForWindow(timeoutMs = 300_000) {
 	const deadline = Date.now() + timeoutMs
 	let last = 'not checked'
+	let attempt = 0
 	while (Date.now() < deadline) {
 		try {
 			return await windowRect()
 		} catch (err) {
-			last = String(err?.message ?? err)
+			last = String(err?.stderr || err?.message || err).trim().split('\n').pop()
 		}
-		await new Promise((r) => setTimeout(r, 2000))
+		// Simulator.app can take a while to put its device window up on a
+		// three-core runner, and asking it to open again is harmless.
+		if (++attempt % 10 === 0) await run('open', ['-a', 'Simulator']).catch(() => {})
+		await new Promise((r) => setTimeout(r, 3000))
 	}
-	throw new Error(`the Simulator window never appeared (${last})`)
+	throw new Error(`the Simulator window never appeared: ${last}`)
 }
 
 /**
