@@ -132,7 +132,8 @@ The session job runs with `permissions: {}` and no secrets, and only
 ## What actually works, measured
 
 Probed on GitHub-hosted runners on 2026-09-16
-([probe run](https://github.com/sol1560/vibrant-sim/actions/runs/35045793201)):
+([probe run](https://github.com/sol1560/vibrant-sim/actions/runs/35045793201)),
+then exercised end to end from a separate machine.
 
 | | Linux (`ubuntu-latest`) | macOS (`macos-latest`) | Windows (`windows-latest`) |
 |---|---|---|---|
@@ -140,15 +141,43 @@ Probed on GitHub-hosted runners on 2026-09-16
 | desktop | webtop container (XFCE) | Aqua, the real login session | interactive session |
 | screenshot | `import -window root` ✅ | `screencapture -x` ✅ | `CopyFromScreen` ✅ |
 | synthetic input | `xdotool` ✅ | CGEvent via Swift ✅ | `SendInput` + SendKeys ✅ |
-| UI tree | X11 window list | System Events ✅ | UI Automation ✅ |
-| video | `ffmpeg x11grab` ✅ | `screencapture -v` | frame sequence |
-| live picture | KasmVNC ✅ | built-in VNC + noVNC | TightVNC + noVNC |
-| tunnel | cloudflared ✅ | cloudflared, registers ✅ | cloudflared |
+| UI tree | X11 window list ✅ | System Events ✅ | UI Automation ✅ |
+| video | `ffmpeg x11grab` ✅ | `screencapture -v` ✅ | frame sequence |
+| live picture in a browser | KasmVNC ✅ | built-in VNC + noVNC | TightVNC + noVNC |
+| tunnel | cloudflared ✅ | cloudflared ✅ | cloudflared |
+
+✅ means it was run and the output was inspected, not that it should work.
 
 macOS needed no accessibility prompt: `launchctl managername` reports `Aqua`,
 `screencapture` returns a real frame with the menu bar and Dock, and System
 Events answers `osascript`. That contradicts the common claim that headless
 macOS GUI automation on a hosted runner is unsolved.
+
+Here is a TextEdit document on a hosted macOS runner, typed into with synthetic
+CGEvent keystrokes from another machine:
+
+![TextEdit on a macOS runner, typed into remotely](docs/evidence/macos-textedit-typed.png)
+
+Two things that only showed up by running it:
+
+- **cloudflared prints a tunnel URL before the tunnel routes.** Waiting for the
+  URL is not enough; you have to wait for a registered connection.
+- **A macOS runner cannot resolve its own trycloudflare hostname.** A tunnel that
+  works perfectly from outside looks dead from the inside, so the runner does not
+  try to check its own tunnel.
+
+### Known rough edges
+
+- **Windows is implemented but not yet exercised end to end.** The primitives are
+  all verified on a runner — screenshot, SendInput, UI Automation, RDP enabled,
+  TightVNC listening on 5900 — but no full session has been driven through the
+  tunnel yet.
+- **The `acceptance` environment has no required reviewers configured here**, so
+  the gate currently passes straight through. Add reviewers in
+  *Settings → Environments → acceptance* to make it block. That setting cannot be
+  made from a GitHub App token.
+- **TextEdit autocapitalises**, so a typed `line one` arrives as `Line one`.
+  Assert on structure, not on exact prose.
 
 ## What will bite you
 

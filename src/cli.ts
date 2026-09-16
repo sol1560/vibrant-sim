@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { generateRecipient, open } from '../runner/envelope.mjs'
 import { SessionClient } from './lib/client.ts'
 import { parseFlow, runFlow } from './lib/flow.ts'
@@ -227,6 +228,39 @@ async function startSession(flags: Flags): Promise<SessionRecord> {
 	return record
 }
 
+/** Copies the workflows and the agent skill into the repository being tested. */
+function init(flags: Flags): void {
+	const here = dirname(fileURLToPath(import.meta.url))
+	const pkg = join(here, '..')
+	const client = str(flags, 'client', 'all')
+	const skillDirs = {
+		claude: ['.claude/skills'],
+		codex: ['.agents/skills'],
+		cursor: ['.cursor/skills'],
+		all: ['.claude/skills', '.agents/skills'],
+	}[client]
+	if (!skillDirs) throw new Error(`unknown --client: ${client}`)
+
+	mkdirSync('.github/workflows', { recursive: true })
+	for (const workflow of ['vsim-session.yml', 'vsim-verify.yml']) {
+		copyFileSync(join(pkg, '.github/workflows', workflow), join('.github/workflows', workflow))
+		console.log(`.github/workflows/${workflow}`)
+	}
+
+	for (const dir of skillDirs) {
+		mkdirSync(join(dir, 'vibrant-sim'), { recursive: true })
+		copyFileSync(join(pkg, 'skills/vibrant-sim/SKILL.md'), join(dir, 'vibrant-sim/SKILL.md'))
+		console.log(`${dir}/vibrant-sim/SKILL.md`)
+	}
+
+	mkdirSync('examples', { recursive: true })
+	copyFileSync(join(pkg, 'examples/smoke.flow.json'), 'examples/smoke.flow.json')
+	console.log('examples/smoke.flow.json')
+
+	console.log('\nCommit these, then run: vsim session start --os linux')
+	console.log('To make the release gate block, add required reviewers to the "acceptance" environment.')
+}
+
 async function doctor(): Promise<void> {
 	const checks: [string, () => string][] = [
 		['node', () => {
@@ -271,6 +305,7 @@ const USAGE = `vsim — on-demand cloud machines with a screen
   vsim run --flow checks.json [--os linux] [--session id] [--evidence dir]
   vsim approve <run-id> [--reject] [--note "..."]
 
+  vsim init [--client claude|codex|cursor|all]
   vsim doctor
 `
 
@@ -321,6 +356,8 @@ async function main(): Promise<void> {
 			return run(flags)
 		case 'approve':
 			return approve(positional, flags)
+		case 'init':
+			return init(flags)
 		case 'doctor':
 			return doctor()
 		default:

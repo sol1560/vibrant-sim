@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
-    "vsim": "./bin/vsim.mjs"
+    "vsim": "./bin/vsim.mjs",
+    "vsim-mcp": "./bin/vsim-mcp.mjs"
   },
   "files": [
     "bin",
