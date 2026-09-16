@@ -228,6 +228,14 @@ async function startAndroidEmulator() {
 		`"${adb}" shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'`,
 	)
 	log('the emulator has finished booting')
+
+	// The Linux image has no ffmpeg, and the driver wants one to recover a
+	// frame when a software-rendered capture comes back flat. Fetch it in the
+	// background rather than making the session wait for something most runs
+	// never need.
+	spawn('bash', ['-lc', 'sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null 2>&1'],
+		{ stdio: 'ignore' })
+
 	// The gateway runs as a separate process and does not inherit this PATH.
 	return { VSIM_ADB: adb }
 }

@@ -94,16 +94,24 @@ export async function screenshot() {
 	// real thing. Falling back costs a few seconds, so only do it when the
 	// frame really is empty.
 	console.log('[vsim] screencap returned a blank frame; grabbing one from screenrecord instead')
-	return frameFromRecording()
+	try {
+		return await frameFromRecording()
+	} catch (err) {
+		// The fallback needs ffmpeg on the host, which the Linux image does not
+		// ship. A flat frame is still better than no frame.
+		console.log(`[vsim] could not recover a frame (${err?.message ?? err}); returning the capture as-is`)
+		return stdout
+	}
 }
 
 /**
- * A flat frame compresses to almost nothing. A real screen at phone resolution
- * never does, so an implausibly small PNG means the framebuffer read failed.
+ * A flat frame compresses to almost nothing. The threshold is deliberately low:
+ * a plain app screen is small too, and wrongly deciding a real capture is empty
+ * costs seconds and can fail outright.
  */
 function looksBlank(png) {
 	const { width, height } = pngSize(png)
-	return width * height > 250_000 && png.length < 40_000
+	return width * height > 250_000 && png.length < 20_000
 }
 
 function pngSize(png) {
