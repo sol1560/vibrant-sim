@@ -1,0 +1,96 @@
+{
+  "schema": "vibrant-sim/result@1",
+  "runId": "local-ios",
+  "target": "gha:ios",
+  "os": {
+    "family": "ios",
+    "image": "gha:ios",
+    "display": "iPad (A16) — iOS-26-5",
+    "width": 1640,
+    "height": 2360
+  },
+  "status": "passed",
+  "startedAt": "2026-09-16T06:16:41.846Z",
+  "durationMs": 118094,
+  "steps": [
+    {
+      "name": "a simulator is booted",
+      "status": "passed",
+      "durationMs": 10800,
+      "action": "exec xcrun simctl list devices booted | grep -c Booted",
+      "detail": "1\n"
+    },
+    {
+      "name": "capture the home screen",
+      "status": "passed",
+      "durationMs": 1797,
+      "action": "screenshot springboard",
+      "evidence": [
+        "screenshots/001-springboard.png"
+      ]
+    },
+    {
+      "name": "Settings is not running yet",
+      "status": "passed",
+      "durationMs": 1793,
+      "action": "exec xcrun simctl spawn booted launchctl list 2>/dev/null | grep -c com.apple.Preferences || true",
+      "detail": "0\n"
+    },
+    {
+      "name": "tap the Settings icon",
+      "status": "passed",
+      "durationMs": 46429,
+      "action": "click 985,1228"
+    },
+    {
+      "name": "wait 6000ms",
+      "status": "passed",
+      "durationMs": 6272,
+      "action": "wait 6000ms"
+    },
+    {
+      "name": "capture what the tap opened",
+      "status": "passed",
+      "durationMs": 46324,
+      "action": "screenshot after-tap",
+      "evidence": [
+        "screenshots/005-after-tap.png"
+      ]
+    },
+    {
+      "name": "the tap really launched Settings",
+      "status": "passed",
+      "durationMs": 4557,
+      "action": "exec xcrun simctl spawn booted launchctl list 2>/dev/null | grep -c com.apple.Preferences",
+      "detail": "1\n"
+    }
+  ],
+  "checks": [
+    {
+      "id": "a simulator is booted",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "Settings is not running yet",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "the tap really launched Settings",
+      "kind": "assert",
+      "status": "passed"
+    }
+  ],
+  "evidence": {
+    "screenshots": [
+      "screenshots/001-springboard.png",
+      "screenshots/005-after-tap.png"
+    ],
+    "logs": []
+  },
+  "cost": {
+    "runnerMinutes": 2,
+    "billableUsd": 0.016
+  }
+}

@@ -2,11 +2,12 @@
 
 A machine with a screen, on demand, that a person and an agent drive together.
 
-You ask for Linux, macOS, or Windows. A GitHub Actions job brings up a real
-graphical desktop, exposes it through one authenticated tunnel, and hands back
-a handle. Your agent clicks, types, reads the UI, and records video. You open a
-link and watch the same screen while it happens. At the end there is an evidence
-package someone can sign off.
+You ask for a desktop — Linux, macOS, Windows — or a simulator — Android, iOS,
+watchOS, tvOS, visionOS. A GitHub Actions job brings up the real thing, exposes
+it through one authenticated tunnel, and hands back a handle. Your agent clicks,
+types, reads the UI, and records video. You open a link and watch the same
+screen while it happens. At the end there is an evidence package someone can
+sign off.
 
 ```bash
 vsim session start --os linux
@@ -201,6 +202,50 @@ On Windows, two things make the difference between "the primitives work" and
 - **Windows refuses to let a background process take focus**, so
   `SetForegroundWindow` returns false. `vsim focus <title>` goes through the
   shell's `AppActivate`, which is allowed.
+
+## Simulators
+
+```bash
+vsim session start --os android    # or ios, watchos, tvos, visionos
+```
+
+Same commands, same evidence package. Two differences worth knowing:
+
+- **Coordinates are device pixels**, the ones the screenshot is in.
+- **A simulator has no framebuffer server**, so the picture is the built-in
+  viewer rather than VNC.
+
+Android returns the best accessibility tree of any target — text, resource ids,
+bounds, and what is tappable — so flows can name a control instead of guessing a
+pixel:
+
+```json
+{ "tapText": "Search settings" }
+```
+
+Apple gives an app's accessibility tree to XCUITest and nothing else, so on iOS
+and its siblings you work from the screenshot. `vsim tree` still reports the
+device, the window and the installed apps.
+
+`macos-latest` ships three runtimes each of iOS, watchOS, tvOS and visionOS.
+Never pin one: GitHub prunes them monthly, and an installed SDK does not mean
+its runtime is there. `vsim` picks the newest available and says so if there is
+none.
+
+![Apple Vision Pro running on a hosted macOS runner](docs/evidence/visionos-simulator.jpg)
+
+Here is the Android home screen, captured through the session API from another
+machine, next to the result of an unattended flow that tapped the search box by
+its label and typed into it:
+
+![Android home screen on a hosted Linux runner](docs/evidence/android-home.png)
+
+And an iPad simulator after an unattended flow tapped the Settings icon. The
+run asserts on `launchctl`, not on the picture: Settings goes from not running
+to running because of the tap
+([run](https://github.com/sol1560/vibrant-sim/actions/runs/35062586105)).
+
+![iPad simulator after an unattended tap opened Settings](docs/evidence/ios-flow-after-tap.png)
 
 ### Known rough edges
 
