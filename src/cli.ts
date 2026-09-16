@@ -24,11 +24,12 @@ function parseArgs(argv: string[]): { positional: string[]; flags: Flags } {
 	const flags: Flags = {}
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i]!
-		if (!arg.startsWith('--')) {
+		// A leading dash followed by a digit is a coordinate, not a flag.
+		if (!arg.startsWith('-') || /^-\d/.test(arg)) {
 			positional.push(arg)
 			continue
 		}
-		const [name, inline] = arg.slice(2).split('=', 2)
+		const [name, inline] = arg.replace(/^--?/, '').split('=', 2)
 		if (inline !== undefined) flags[name!] = inline
 		else if (argv[i + 1] && !argv[i + 1]!.startsWith('--')) flags[name!] = argv[++i]!
 		else flags[name!] = true

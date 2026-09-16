@@ -10,10 +10,10 @@
 // and Windows are no better, so nothing reaches them without the pairing key.
 
 import { timingSafeEqual } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect } from 'node:net'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 const PAIRING_KEY = process.env.VSIM_PAIRING_KEY || ''
 const PORT = Number(process.env.VSIM_GATEWAY_PORT || 7890)
@@ -42,11 +42,16 @@ const touch = () => { lastActivity = Date.now() }
 // so it falls back to a timed frame sequence that ffmpeg turns into a movie.
 
 let frameLoop = null
+let driverRecordingPath = null
 
 async function startRecording(name) {
 	mkdirSync(EVIDENCE_DIR, { recursive: true })
-	const target = join(EVIDENCE_DIR, `${name}.mp4`)
-	if (driver.startRecording) return { ...(await driver.startRecording(name, target)), path: target }
+	const target = resolve(EVIDENCE_DIR, `${name}.mp4`)
+	if (driver.startRecording) {
+		const started = await driver.startRecording(name, target)
+		driverRecordingPath = target
+		return { ...started, path: target }
+	}
 
 	const frameDir = join(EVIDENCE_DIR, `${name}-frames`)
 	mkdirSync(frameDir, { recursive: true })
@@ -68,12 +73,20 @@ async function startRecording(name) {
 }
 
 async function stopRecording() {
-	if (driver.stopRecording && !frameLoop) return driver.stopRecording()
+	if (driverRecordingPath) {
+		const path = driverRecordingPath
+		driverRecordingPath = null
+		await driver.stopRecording(path)
+		const size = existsSync(path) ? statSync(path).size : 0
+		if (!size) throw new Error(`recording finished but ${path} is empty`)
+		return { kind: 'native', path, bytes: size }
+	}
 	if (!frameLoop) throw new Error('not recording')
 	const { frameDir, target } = frameLoop
 	clearInterval(frameLoop.timer)
 	frameLoop = null
-	return { kind: 'frame-sequence', path: target, frameDir, note: 'frames captured; encode with ffmpeg' }
+	const frames = readdirSync(frameDir).length
+	return { kind: 'frame-sequence', path: target, frameDir, frames }
 }
 
 function keyMatches(candidate) {
