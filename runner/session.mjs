@@ -289,12 +289,14 @@ background(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta
 		...driverEnv,
 	},
 })
+// 401 means it is serving and demanding a key, which is all that matters here;
+// the driver may still be booting behind it.
 await waitForHttp(`http://127.0.0.1:${GATEWAY_PORT}/__vsim/api/health`, {
 	label: 'gateway',
-	timeoutMs: 240_000,
-	accept: (s) => s === 401 || s === 200,
+	timeoutMs: 120_000,
+	accept: (s) => s === 401,
 })
-log('gateway is up')
+log('gateway is serving')
 
 let baseUrl = `http://127.0.0.1:${GATEWAY_PORT}`
 if (USE_TUNNEL) {

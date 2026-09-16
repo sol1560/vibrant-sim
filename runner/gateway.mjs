@@ -53,6 +53,12 @@ const driver = await import(driverPath)
 let lastActivity = Date.now()
 const touch = () => { lastActivity = Date.now() }
 
+// The driver is brought up after the server starts listening, so callers have
+// to be told the difference between "not serving" and "not ready yet".
+let ready = null
+let preparing = true
+let prepareError = null
+
 // --- recording ---------------------------------------------------------------
 // Linux and macOS record the real display. Windows has no comparable built-in,
 // so it falls back to a timed frame sequence that ffmpeg turns into a movie.
@@ -170,9 +176,23 @@ async function handleApi(req, res, url) {
 	})
 
 	try {
+		if (action === 'health') {
+			const body = {
+				ok: !preparing && !prepareError,
+				platform: PLATFORM,
+				preparing,
+				idleSeconds: Math.round((Date.now() - lastActivity) / 1000),
+				...(prepareError ? { error: prepareError } : {}),
+			}
+			return json(res, body.ok ? 200 : 503, body)
+		}
+
+		// Everything else needs a working driver, so wait for it rather than
+		// failing on a session that is simply still booting.
+		await ready
+		if (prepareError) return json(res, 503, { error: prepareError })
+
 		switch (action) {
-			case 'health':
-				return json(res, 200, { ok: true, platform: PLATFORM, idleSeconds: Math.round((Date.now() - lastActivity) / 1000) })
 			case 'info':
 				return json(res, 200, await driver.info())
 			case 'screenshot': {
@@ -299,7 +319,18 @@ if (IDLE_PATH) {
 	}, 5000).unref()
 }
 
-await driver.prepare()
+// Listen first, prepare second. Booting a simulator and compiling the input
+// helper can take minutes, and a session that is not listening yet looks dead
+// to everything waiting on it.
 server.listen(PORT, '127.0.0.1', () => {
-	console.log(`gateway listening on 127.0.0.1:${PORT} -> upstream ${UPSTREAM_PORT} (${PLATFORM})`)
+	console.log(`gateway listening on 127.0.0.1:${PORT} -> upstream ${UPSTREAM_PORT || 'none'} (${PLATFORM})`)
 })
+
+ready = driver.prepare().then(
+	() => { preparing = false },
+	(err) => {
+		preparing = false
+		prepareError = String(err?.message ?? err)
+		console.error(`[vsim] the driver failed to start: ${prepareError}`)
+	},
+)
