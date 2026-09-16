@@ -10,20 +10,20 @@
     "height": 768
   },
   "status": "passed",
-  "startedAt": "2026-09-16T03:01:18.243Z",
-  "durationMs": 20783,
+  "startedAt": "2026-09-16T08:31:12.468Z",
+  "durationMs": 13574,
   "steps": [
     {
       "name": "the runner really is a graphical login session",
       "status": "passed",
-      "durationMs": 80,
+      "durationMs": 79,
       "action": "exec launchctl managername",
       "detail": "Aqua\n"
     },
     {
       "name": "capture the idle desktop",
       "status": "passed",
-      "durationMs": 263,
+      "durationMs": 234,
       "action": "screenshot idle-desktop",
       "evidence": [
         "screenshots/001-idle-desktop.png"
@@ -32,84 +32,78 @@
     {
       "name": "launch TextEdit",
       "status": "passed",
-      "durationMs": 258,
+      "durationMs": 199,
       "action": "exec open -a TextEdit; echo launched",
       "detail": "launched\n"
     },
     {
-      "name": "wait 10000ms",
+      "name": "wait for the document window",
       "status": "passed",
-      "durationMs": 10002,
-      "action": "wait 10000ms"
-    },
-    {
-      "name": "a document window is up",
-      "status": "passed",
-      "durationMs": 2614,
-      "action": "exec osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"' | awk '$1 >= 1 { print \"window-present\" }'",
-      "detail": "window-present\n"
+      "durationMs": 1426,
+      "action": "assert \"Untitled\"",
+      "detail": "found \"Untitled\""
     },
     {
       "name": "click into the document",
       "status": "passed",
-      "durationMs": 270,
+      "durationMs": 400,
       "action": "click 380,308"
     },
     {
-      "name": "wait 2500ms",
+      "name": "wait 3000ms",
       "status": "passed",
-      "durationMs": 2502,
-      "action": "wait 2500ms"
+      "durationMs": 3004,
+      "action": "wait 3000ms"
     },
     {
       "name": "type the first line",
       "status": "passed",
-      "durationMs": 363,
+      "durationMs": 599,
       "action": "type 8 chars"
     },
     {
-      "name": "wait 700ms",
+      "name": "wait 4000ms",
       "status": "passed",
-      "durationMs": 703,
-      "action": "wait 700ms"
+      "durationMs": 4002,
+      "action": "wait 4000ms"
     },
     {
       "name": "press Return",
       "status": "passed",
-      "durationMs": 146,
+      "durationMs": 210,
       "action": "key Return"
     },
     {
       "name": "wait 700ms",
       "status": "passed",
-      "durationMs": 701,
+      "durationMs": 702,
       "action": "wait 700ms"
     },
     {
       "name": "type the second line",
       "status": "passed",
-      "durationMs": 393,
+      "durationMs": 498,
       "action": "type 8 chars"
     },
     {
-      "name": "wait 1500ms",
+      "name": "wait 1200ms",
       "status": "passed",
-      "durationMs": 1503,
-      "action": "wait 1500ms"
+      "durationMs": 1201,
+      "action": "wait 1200ms"
     },
     {
       "name": "capture the typed document",
       "status": "passed",
-      "durationMs": 180,
+      "durationMs": 155,
       "action": "screenshot after-typing",
       "evidence": [
-        "screenshots/013-after-typing.png"
+        "screenshots/012-after-typing.png"
       ]
     },
     {
       "name": "both lines landed, so Return was not swallowed",
       "status": "passed",
-      "durationMs": 804,
+      "durationMs": 865,
       "action": "exec osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -ci 'line' | tr -d ' '",
       "detail": "2\n"
     }
@@ -126,7 +120,7 @@
       "status": "passed"
     },
     {
-      "id": "a document window is up",
+      "id": "wait for the document window",
       "kind": "assert",
       "status": "passed"
     },
@@ -139,7 +133,7 @@
   "evidence": {
     "screenshots": [
       "screenshots/001-idle-desktop.png",
-      "screenshots/013-after-typing.png"
+      "screenshots/012-after-typing.png"
     ],
     "logs": []
   },
