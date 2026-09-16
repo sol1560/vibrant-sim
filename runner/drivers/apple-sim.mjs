@@ -97,46 +97,46 @@ async function waitForWindow(timeoutMs = 300_000) {
  * Prefers the window's own content element, because the offset of a title bar
  * or toolbar is not something worth guessing at.
  */
-async function windowRect() {
-	// Two things to get right here. `tell ... to tell ...` is the single-line
-	// form and cannot take a multi-line block, and `ip` is a reserved word, so
-	// assigning to it fails with "Can't set IP to ...".
-	const script = `
-    tell application "System Events"
-      tell process "Simulator"
-        set theWindow to window 1
-        set windowPos to position of theWindow
-        set windowSize to size of theWindow
-        try
-          set innerView to group 1 of theWindow
-          set innerPos to position of innerView
-          set innerSize to size of innerView
-          return "inner|" & (item 1 of innerPos) & "," & (item 2 of innerPos) & "," & (item 1 of innerSize) & "," & (item 2 of innerSize)
-        end try
-        return "window|" & (item 1 of windowPos) & "," & (item 2 of windowPos) & "," & (item 1 of windowSize) & "," & (item 2 of windowSize)
-      end tell
-    end tell`
-	let stdout = ''
+/**
+ * One statement per call, deliberately.
+ *
+ * The single-line `tell ... to tell ... to return ...` form answers reliably
+ * here, while the equivalent multi-line block intermittently fails on a window
+ * that plainly exists. Geometry is measured once per session, so the extra
+ * round trips cost nothing.
+ */
+async function osa(statement) {
+	const script = `tell application "System Events" to tell process "Simulator" to ${statement}`
 	let last = null
 	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
-			;({ stdout } = await run('osascript', ['-e', script], { timeout: 20_000 }))
-			break
+			const { stdout } = await run('osascript', ['-e', script], { timeout: 20_000 })
+			return stdout.trim()
 		} catch (err) {
-			// System Events intermittently refuses a window it answered a
-			// moment earlier; a retry is cheaper than failing the call.
 			last = err
 			await new Promise((r) => setTimeout(r, 1500))
 		}
 	}
-	if (last && !stdout) throw last
+	throw new Error(`osascript failed: ${String(last?.stderr || last?.message || last).trim().split('\n').pop()}`)
+}
 
-	const [kind, numbers] = stdout.trim().split('|')
-	if (!numbers) throw new Error('no Simulator window')
-	const [x, y, width, height] = numbers.split(',').map(Number)
-	// Fall back to trimming a standard title bar when the inner element is not
-	// exposed; everything below it is the device screen.
-	const titleBar = kind === 'inner' ? 0 : 28
+const pair = (value) => value.split(',').map((n) => Number(n.trim()))
+
+async function windowRect() {
+	const [x, y] = pair(await osa('return position of window 1'))
+	const [width, height] = pair(await osa('return size of window 1'))
+	if (!Number.isFinite(x) || !Number.isFinite(width)) throw new Error('no Simulator window')
+
+	// The group inside the window is the device screen itself, so prefer it
+	// over guessing how tall the title bar and toolbar are.
+	if ((await osa('return exists group 1 of window 1')) === 'true') {
+		const [innerX, innerY] = pair(await osa('return position of group 1 of window 1'))
+		const [innerWidth, innerHeight] = pair(await osa('return size of group 1 of window 1'))
+		if (Number.isFinite(innerX) && innerWidth > 0) {
+			return { x: innerX, y: innerY, width: innerWidth, height: innerHeight }
+		}
+	}
+	const titleBar = 28
 	return { x, y: y + titleBar, width, height: height - titleBar }
 }
 
