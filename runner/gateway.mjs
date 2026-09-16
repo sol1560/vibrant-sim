@@ -1,0 +1,229 @@
+// The single front door of a session.
+//
+// One authenticated HTTP endpoint serves both audiences through one tunnel:
+//   /                 the live desktop, reverse-proxied (WebSocket included)
+//   /__vsim/api/*     the control API an agent drives
+//   /__vsim/auth?k=   exchanges the pairing key for a cookie so a browser works
+//
+// The desktop upstream is deliberately left on the loopback interface. webtop
+// ships with no authentication at all, and the built-in VNC servers on macOS
+// and Windows are no better, so nothing reaches them without the pairing key.
+
+import { timingSafeEqual } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { createServer, request as httpRequest } from 'node:http'
+import { connect } from 'node:net'
+import { join } from 'node:path'
+
+const PAIRING_KEY = process.env.VSIM_PAIRING_KEY || ''
+const PORT = Number(process.env.VSIM_GATEWAY_PORT || 7890)
+const UPSTREAM_PORT = Number(process.env.VSIM_UPSTREAM_PORT || 3000)
+const UPSTREAM_HOST = '127.0.0.1'
+const PLATFORM = process.env.VSIM_PLATFORM || process.platform
+const IDLE_PATH = process.env.VSIM_IDLE_FILE || ''
+const STOP_FILE = process.env.VSIM_STOP_FILE || ''
+const EVIDENCE_DIR = process.env.VSIM_EVIDENCE_DIR || 'evidence'
+
+if (!PAIRING_KEY) {
+	console.error('VSIM_PAIRING_KEY is required; refusing to serve an unauthenticated desktop')
+	process.exit(1)
+}
+
+const driver = await import(
+	{ linux: './drivers/linux.mjs', darwin: './drivers/macos.mjs', macos: './drivers/macos.mjs', win32: './drivers/windows.mjs', windows: './drivers/windows.mjs' }[PLATFORM] ??
+	'./drivers/linux.mjs'
+)
+
+let lastActivity = Date.now()
+const touch = () => { lastActivity = Date.now() }
+
+// --- recording ---------------------------------------------------------------
+// Linux and macOS record the real display. Windows has no comparable built-in,
+// so it falls back to a timed frame sequence that ffmpeg turns into a movie.
+
+let frameLoop = null
+
+async function startRecording(name) {
+	mkdirSync(EVIDENCE_DIR, { recursive: true })
+	const target = join(EVIDENCE_DIR, `${name}.mp4`)
+	if (driver.startRecording) return { ...(await driver.startRecording(name, target)), path: target }
+
+	const frameDir = join(EVIDENCE_DIR, `${name}-frames`)
+	mkdirSync(frameDir, { recursive: true })
+	let index = 0
+	let busy = false
+	frameLoop = {
+		name,
+		frameDir,
+		target,
+		timer: setInterval(async () => {
+			if (busy) return
+			busy = true
+			try {
+				writeFileSync(join(frameDir, `${String(index++).padStart(5, '0')}.png`), await driver.screenshot())
+			} catch { /* a dropped frame must not kill the recording */ } finally { busy = false }
+		}, 500),
+	}
+	return { kind: 'frame-sequence', name, path: target, frameDir }
+}
+
+async function stopRecording() {
+	if (driver.stopRecording && !frameLoop) return driver.stopRecording()
+	if (!frameLoop) throw new Error('not recording')
+	const { frameDir, target } = frameLoop
+	clearInterval(frameLoop.timer)
+	frameLoop = null
+	return { kind: 'frame-sequence', path: target, frameDir, note: 'frames captured; encode with ffmpeg' }
+}
+
+function keyMatches(candidate) {
+	if (typeof candidate !== 'string' || candidate.length !== PAIRING_KEY.length) return false
+	return timingSafeEqual(Buffer.from(candidate), Buffer.from(PAIRING_KEY))
+}
+
+function presentedKey(req) {
+	const auth = req.headers.authorization
+	if (auth?.startsWith('Bearer ')) return auth.slice(7)
+	const cookie = req.headers.cookie ?? ''
+	const match = cookie.match(/(?:^|;\s*)vsim=([^;]+)/)
+	if (match) return decodeURIComponent(match[1])
+	return null
+}
+
+const json = (res, status, body) => {
+	const payload = Buffer.from(JSON.stringify(body))
+	res.writeHead(status, { 'content-type': 'application/json', 'content-length': payload.length })
+	res.end(payload)
+}
+
+async function handleApi(req, res, url) {
+	const action = url.pathname.slice('/__vsim/api/'.length)
+	const body = await new Promise((resolve) => {
+		const chunks = []
+		req.on('data', (c) => chunks.push(c))
+		req.on('end', () => {
+			const raw = Buffer.concat(chunks).toString('utf8')
+			try { resolve(raw ? JSON.parse(raw) : {}) } catch { resolve({}) }
+		})
+	})
+
+	try {
+		switch (action) {
+			case 'health':
+				return json(res, 200, { ok: true, platform: PLATFORM, idleSeconds: Math.round((Date.now() - lastActivity) / 1000) })
+			case 'info':
+				return json(res, 200, await driver.info())
+			case 'screenshot': {
+				const png = await driver.screenshot()
+				if (body.encoding === 'base64') return json(res, 200, { format: 'png', base64: png.toString('base64') })
+				res.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length })
+				return res.end(png)
+			}
+			case 'click':
+				await driver.click(body.x, body.y, body.button ?? 'left')
+				return json(res, 200, { ok: true })
+			case 'move':
+				await driver.move(body.x, body.y)
+				return json(res, 200, { ok: true })
+			case 'type':
+				await driver.typeText(body.text ?? '')
+				return json(res, 200, { ok: true })
+			case 'key':
+				await driver.key(body.combo ?? body.keys ?? '')
+				return json(res, 200, { ok: true })
+			case 'exec':
+				return json(res, 200, await driver.exec(body.command ?? ''))
+			case 'tree':
+				return json(res, 200, await driver.tree())
+			case 'record/start':
+				return json(res, 200, await startRecording(body.name ?? 'session'))
+			case 'record/stop':
+				return json(res, 200, await stopRecording())
+			case 'stop':
+				if (STOP_FILE) writeFileSync(STOP_FILE, new Date().toISOString())
+				json(res, 200, { ok: true, stopping: true })
+				return setTimeout(() => process.exit(0), 500)
+			default:
+				return json(res, 404, { error: `unknown action: ${action}` })
+		}
+	} catch (err) {
+		return json(res, 500, { error: String(err?.message ?? err) })
+	}
+}
+
+function proxyHttp(req, res) {
+	const upstream = httpRequest(
+		{ host: UPSTREAM_HOST, port: UPSTREAM_PORT, path: req.url, method: req.method, headers: { ...req.headers, host: `${UPSTREAM_HOST}:${UPSTREAM_PORT}` } },
+		(up) => {
+			res.writeHead(up.statusCode ?? 502, up.headers)
+			up.pipe(res)
+		},
+	)
+	upstream.on('error', (err) => {
+		if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' })
+		res.end(`desktop upstream not reachable: ${err.message}`)
+	})
+	req.pipe(upstream)
+}
+
+const server = createServer(async (req, res) => {
+	const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+
+	if (url.pathname === '/__vsim/auth') {
+		if (!keyMatches(url.searchParams.get('k') ?? '')) {
+			res.writeHead(401, { 'content-type': 'text/plain' })
+			return res.end('bad pairing key')
+		}
+		touch()
+		res.writeHead(302, {
+			'set-cookie': `vsim=${encodeURIComponent(PAIRING_KEY)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400`,
+			location: url.searchParams.get('to') || '/',
+		})
+		return res.end()
+	}
+
+	if (!keyMatches(presentedKey(req) ?? '')) {
+		res.writeHead(401, { 'content-type': 'text/plain' })
+		return res.end('vibrant-sim: pairing key required')
+	}
+	touch()
+
+	if (url.pathname.startsWith('/__vsim/api/')) return handleApi(req, res, url)
+	return proxyHttp(req, res)
+})
+
+// Raw socket relay for the VNC WebSocket; the desktop is useless without it.
+server.on('upgrade', (req, socket, head) => {
+	if (!keyMatches(presentedKey(req) ?? '')) {
+		socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
+		return
+	}
+	touch()
+	const upstream = connect(UPSTREAM_PORT, UPSTREAM_HOST, () => {
+		const headers = Object.entries(req.headers)
+			.flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => `${k}: ${x}`) : [`${k}: ${v}`]))
+			.join('\r\n')
+		upstream.write(`${req.method} ${req.url} HTTP/1.1\r\n${headers}\r\n\r\n`)
+		if (head?.length) upstream.write(head)
+		socket.pipe(upstream)
+		upstream.pipe(socket)
+	})
+	const drop = () => { socket.destroy(); upstream.destroy() }
+	upstream.on('error', drop)
+	socket.on('error', drop)
+})
+
+if (IDLE_PATH) {
+	// The reaper in session.mjs reads this instead of asking the gateway, so a
+	// wedged driver still gets the session torn down.
+	setInterval(() => {
+		try {
+			writeFileSync(IDLE_PATH, String(Math.round((Date.now() - lastActivity) / 1000)))
+		} catch { /* a missing file just means "no reading yet" */ }
+	}, 5000).unref()
+}
+
+await driver.prepare()
+server.listen(PORT, '127.0.0.1', () => {
+	console.log(`gateway listening on 127.0.0.1:${PORT} -> upstream ${UPSTREAM_PORT} (${PLATFORM})`)
+})

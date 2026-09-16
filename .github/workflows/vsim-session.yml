@@ -1,0 +1,107 @@
+name: vsim-session
+run-name: "vsim session ${{ inputs.session_id }} (${{ inputs.os }})"
+
+# An interactive session: one machine with a screen, reachable by the person who
+# started it and by their agent, through a single authenticated tunnel.
+#
+# Only workflow_dispatch. Never pull_request_target, never a fork trigger: that
+# would hand a stranger a shell with a token.
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Correlation id chosen by the caller
+        required: true
+      os:
+        description: Which machine to bring up
+        type: choice
+        options: [linux, macos, windows]
+        default: linux
+      recipient_key:
+        description: base64url X25519 public key; the session handle is sealed to it
+        required: true
+      ttl_minutes:
+        description: Hard stop for the session
+        default: "30"
+      idle_minutes:
+        description: Stop early after this long with no traffic
+        default: "10"
+
+# No secrets, no token. The job has nothing worth stealing if the desktop is
+# reached by someone who should not have it.
+permissions: {}
+
+jobs:
+  session:
+    name: "${{ inputs.os }} session"
+    runs-on: ${{ inputs.os == 'macos' && 'macos-latest' || inputs.os == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install cloudflared
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.os }}" in
+            linux)
+              curl -fsSL -o /usr/local/bin/cloudflared \
+                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+              chmod +x /usr/local/bin/cloudflared ;;
+            macos)
+              curl -fsSL -o cf.tgz \
+                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz
+              tar xzf cf.tgz && sudo mv cloudflared /usr/local/bin/ && chmod +x /usr/local/bin/cloudflared ;;
+            windows)
+              curl -fsSL -o /usr/bin/cloudflared.exe \
+                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe ;;
+          esac
+          cloudflared --version
+
+      - name: Bring up the session
+        id: boot
+        shell: bash
+        env:
+          VSIM_OS: ${{ inputs.os }}
+          VSIM_RECIPIENT_KEY: ${{ inputs.recipient_key }}
+          VSIM_TTL_MINUTES: ${{ inputs.ttl_minutes }}
+          VSIM_IDLE_MINUTES: ${{ inputs.idle_minutes }}
+          VSIM_OUT_DIR: .vsim
+        run: |
+          set -euo pipefail
+          node runner/session.mjs &
+          echo $! > .vsim.pid
+          # Publish the handle as soon as it exists so the caller can attach
+          # while the session is still running.
+          for i in $(seq 1 180); do
+            [ -f .vsim/handle.sealed ] && break
+            sleep 2
+          done
+          test -f .vsim/handle.sealed || { echo "session never produced a handle"; exit 1; }
+          echo "handle published after $((i*2))s"
+
+      - name: Publish the sealed handle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vsim-handle-${{ inputs.session_id }}
+          path: .vsim/handle.sealed
+          retention-days: 1
+
+      - name: Hold the session open
+        shell: bash
+        run: |
+          pid=$(cat .vsim.pid)
+          while kill -0 "$pid" 2>/dev/null; do sleep 5; done
+          echo "session process exited"
+          cat .vsim/ended.json 2>/dev/null || true
+
+      - name: Collect evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vsim-evidence-${{ inputs.session_id }}
+          path: |
+            .vsim/evidence
+            .vsim/ended.json
+          if-no-files-found: ignore
+          retention-days: 7

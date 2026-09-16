@@ -1,0 +1,30 @@
+{
+  "name": "vibrant-sim",
+  "version": "0.1.0",
+  "description": "On-demand cloud machines with a screen, driven by both an agent and a human, with signed-off acceptance.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "vsim": "./bin/vsim.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "runner",
+    "skills",
+    "workflows"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vsim": "node --experimental-strip-types src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
