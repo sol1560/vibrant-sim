@@ -1,0 +1,30 @@
+{
+  "name": "ios simulator smoke",
+  "steps": [
+    {
+      "name": "a simulator is booted",
+      "exec": "xcrun simctl list devices booted | grep -c Booted",
+      "expect": { "code": 0, "notContains": "0\n" }
+    },
+    { "name": "capture the home screen", "screenshot": "springboard" },
+    {
+      "name": "Settings is not running yet",
+      "comment": "Establishes the baseline the tap has to change.",
+      "exec": "xcrun simctl spawn booted launchctl list 2>/dev/null | grep -c com.apple.Preferences || true",
+      "expect": { "code": 0, "contains": "0" }
+    },
+    {
+      "name": "tap the Settings icon",
+      "comment": "Device pixels. simctl cannot synthesise a touch, so this is a screen click mapped into the Simulator window.",
+      "click": [985, 1228]
+    },
+    { "wait": 6000 },
+    { "name": "capture what the tap opened", "screenshot": "after-tap" },
+    {
+      "name": "the tap really launched Settings",
+      "comment": "Read it off the device rather than trusting the screenshot.",
+      "exec": "xcrun simctl spawn booted launchctl list 2>/dev/null | grep -c com.apple.Preferences",
+      "expect": { "code": 0, "notContains": "0\n" }
+    }
+  ]
+}
