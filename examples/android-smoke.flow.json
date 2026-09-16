@@ -4,45 +4,82 @@
     {
       "name": "the emulator finished booting",
       "exec": "getprop sys.boot_completed",
-      "expect": { "code": 0, "contains": "1" }
+      "expect": {
+        "code": 0,
+        "contains": "1"
+      }
     },
     {
       "name": "it is the emulator, not a stray device",
       "exec": "getprop ro.hardware",
-      "expect": { "code": 0, "contains": "ranchu" }
+      "expect": {
+        "code": 0,
+        "contains": "ranchu"
+      }
     },
-    { "name": "capture the home screen", "screenshot": "home" },
+    {
+      "name": "capture the home screen",
+      "screenshot": "home"
+    },
     {
       "name": "open Settings",
       "exec": "am start -a android.settings.SETTINGS",
-      "expect": { "code": 0, "contains": "Starting" }
+      "expect": {
+        "code": 0,
+        "contains": "Starting"
+      }
     },
-    { "wait": 4000 },
+    {
+      "wait": 4000
+    },
     {
       "name": "Settings is really in the foreground",
-      "exec": "dumpsys window displays | grep -m1 -i mCurrentFocus",
-      "expect": { "code": 0, "contains": "Settings" }
+      "exec": "dumpsys activity activities | grep -m1 -iE 'ResumedActivity|mResumedActivity'",
+      "expect": {
+        "code": 0,
+        "contains": "Settings"
+      },
+      "comment": "dumpsys window sometimes reports no focus mid-transition; the resumed activity is the reliable read."
     },
-    { "name": "capture Settings", "screenshot": "settings" },
+    {
+      "name": "capture Settings",
+      "screenshot": "settings"
+    },
     {
       "name": "tap the search box by its label",
       "comment": "By label, not coordinates: uiautomator knows where it is, and this survives a change of device or resolution.",
       "tapText": "Search settings"
     },
-    { "wait": 3000 },
-    { "name": "type a query", "type": "bluetooth" },
-    { "wait": 3000 },
-    { "name": "capture the search results", "screenshot": "search" },
+    {
+      "wait": 3000
+    },
+    {
+      "name": "type a query",
+      "type": "bluetooth"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "name": "capture the search results",
+      "screenshot": "search"
+    },
     {
       "name": "the query really reached the search field",
-      "comment": "Assert on the search field itself, not on the page containing the word somewhere.",
-      "exec": "uiautomator dump /sdcard/vsim-check.xml > /dev/null 2>&1 && grep -o 'resource-id=\"com.android.settings:id/open_search_view_edit_text\"[^>]*text=\"[^\"]*\"' /sdcard/vsim-check.xml | head -1",
-      "expect": { "code": 0, "contains": "bluetooth" }
+      "comment": "uiautomator writes text before resource-id on a node, so match the whole node and look inside it.",
+      "exec": "uiautomator dump /sdcard/vsim-check.xml > /dev/null 2>&1 && grep -o '<node[^>]*open_search_view_edit_text[^>]*>' /sdcard/vsim-check.xml | head -1",
+      "expect": {
+        "code": 0,
+        "contains": "bluetooth"
+      }
     },
     {
       "name": "and the results are about Bluetooth",
       "exec": "grep -c 'Bluetooth' /sdcard/vsim-check.xml",
-      "expect": { "code": 0, "notContains": "0\n" }
+      "expect": {
+        "code": 0,
+        "notContains": "0\n"
+      }
     }
   ]
 }
