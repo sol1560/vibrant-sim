@@ -130,14 +130,19 @@ async function startTunnel(port) {
 	children.push(child)
 	child.on('exit', (code) => log(`cloudflared exited with ${code}`))
 
-	const deadline = Date.now() + 90_000
+	const deadline = Date.now() + 180_000
+	let url = null
 	while (Date.now() < deadline) {
 		const text = existsSync(logPath) ? readFileSync(logPath, 'utf8') : ''
-		const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
-		if (match) return match[0]
+		url ??= text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)?.[0] ?? null
+		// A URL in the log only means it was allocated. Edge routing is not live
+		// until a connection is registered, and on macOS that lags noticeably.
+		if (url && /Registered tunnel connection/.test(text)) return url
 		await sleep(1500)
 	}
-	throw new Error('cloudflared never printed a tunnel URL')
+	throw new Error(url
+		? 'cloudflared allocated a URL but never registered a connection'
+		: 'cloudflared never printed a tunnel URL')
 }
 
 const pairingKey = randomBytes(32).toString('base64url')
@@ -169,7 +174,9 @@ await waitForHttp(`http://127.0.0.1:${GATEWAY_PORT}/__vsim/api/health`, {
 log('gateway is up')
 
 const tunnelUrl = await startTunnel(GATEWAY_PORT)
-await waitForHttp(`${tunnelUrl}/__vsim/api/health`, { label: 'tunnel', timeoutMs: 60_000, accept: (s) => s === 401 })
+// 401 is the healthy answer here: the gateway is reachable and refusing traffic
+// that has no pairing key.
+await waitForHttp(`${tunnelUrl}/__vsim/api/health`, { label: 'tunnel', timeoutMs: 180_000, accept: (s) => s === 401 })
 
 const viewerPath = OS === 'linux'
 	? '/'
