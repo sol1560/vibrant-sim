@@ -10,101 +10,133 @@
     "height": 2400
   },
   "status": "passed",
-  "startedAt": "2026-09-16T06:06:41.038Z",
-  "durationMs": 17197,
+  "startedAt": "2026-09-16T07:35:47.068Z",
+  "durationMs": 48249,
   "steps": [
     {
       "name": "the emulator finished booting",
       "status": "passed",
-      "durationMs": 34,
+      "durationMs": 69,
       "action": "exec getprop sys.boot_completed",
       "detail": "1\n"
     },
     {
-      "name": "hardware acceleration is on",
+      "name": "it is the emulator, not a stray device",
       "status": "passed",
-      "durationMs": 44,
-      "action": "exec getprop ro.kernel.qemu.gles; getprop ro.hardware",
-      "detail": "\nranchu\n"
+      "durationMs": 42,
+      "action": "exec getprop ro.hardware",
+      "detail": "ranchu\n"
+    },
+    {
+      "name": "wait for the home screen",
+      "status": "passed",
+      "durationMs": 5201,
+      "action": "assert \"Google search\"",
+      "detail": "found \"Google search\""
     },
     {
       "name": "capture the home screen",
       "status": "passed",
-      "durationMs": 2582,
+      "durationMs": 2224,
       "action": "screenshot home",
       "evidence": [
-        "screenshots/002-home.png"
+        "screenshots/003-home.png"
       ]
+    },
+    {
+      "name": "tap an app icon by its label",
+      "status": "passed",
+      "durationMs": 2964,
+      "action": "tap \"Messages\"",
+      "detail": "tapped \"Messages\" at 417,1971"
+    },
+    {
+      "name": "the tap really launched it",
+      "status": "passed",
+      "durationMs": 2473,
+      "action": "exec for i in $(seq 1 30); do dumpsys activity activities | grep -m1 -iE 'ResumedActivity' | grep -i messaging && break; sleep 2; done",
+      "detail": "  ResumedActivity: ActivityRecord{d331d6a u0 com.google.android.apps.messaging/.ui.ConversationListActivity t8}\n\nFailed to write while dumping service activity: Broken pipe\nFailed to write while dumping service activity: Broken pipe\n"
+    },
+    {
+      "name": "capture what the tap opened",
+      "status": "passed",
+      "durationMs": 1177,
+      "action": "screenshot messages",
+      "evidence": [
+        "screenshots/006-messages.png"
+      ]
+    },
+    {
+      "name": "back to the home screen",
+      "status": "passed",
+      "durationMs": 70,
+      "action": "key home"
+    },
+    {
+      "name": "wait for the home screen again",
+      "status": "passed",
+      "durationMs": 8080,
+      "action": "assert \"Google search\"",
+      "detail": "found \"Google search\""
     },
     {
       "name": "open Settings",
       "status": "passed",
-      "durationMs": 196,
+      "durationMs": 135,
       "action": "exec am start -a android.settings.SETTINGS",
       "detail": "Starting: Intent { act=android.settings.SETTINGS }\n"
     },
     {
-      "name": "wait 4000ms",
+      "name": "wait for Settings to draw",
       "status": "passed",
-      "durationMs": 4001,
-      "action": "wait 4000ms"
+      "durationMs": 7648,
+      "action": "assert \"Search settings\"",
+      "detail": "found \"Search settings\""
     },
     {
       "name": "capture Settings",
       "status": "passed",
-      "durationMs": 983,
+      "durationMs": 938,
       "action": "screenshot settings",
       "evidence": [
-        "screenshots/005-settings.png"
+        "screenshots/011-settings.png"
       ]
     },
     {
-      "name": "Settings is really in the foreground",
+      "name": "tap the search box by its label",
       "status": "passed",
-      "durationMs": 71,
-      "action": "exec dumpsys window displays | grep -m1 -i 'mCurrentFocus'",
-      "detail": "  mCurrentFocus=Window{df4ddf6 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}\n\nFailed to write while dumping service window: Broken pipe\n"
+      "durationMs": 7709,
+      "action": "tap \"Search settings\"",
+      "detail": "tapped \"com.android.settings:id/search_action_bar\" at 540,660"
     },
     {
-      "name": "type into the search box",
+      "name": "type a query",
       "status": "passed",
-      "durationMs": 260,
-      "action": "exec am start -a com.android.settings.action.SETTINGS_SEARCH 2>/dev/null || am start -n com.android.settings/.search.SearchActivity",
-      "detail": "Starting: Intent { act=com.android.settings.action.SETTINGS_SEARCH }\n"
-    },
-    {
-      "name": "wait 3000ms",
-      "status": "passed",
-      "durationMs": 3001,
-      "action": "wait 3000ms"
-    },
-    {
-      "name": "type",
-      "status": "passed",
-      "durationMs": 531,
+      "durationMs": 948,
       "action": "type 9 chars"
     },
     {
-      "name": "wait 2500ms",
+      "name": "the typing really reached the field",
       "status": "passed",
-      "durationMs": 2502,
-      "action": "wait 2500ms"
+      "durationMs": 4113,
+      "action": "assert \"Clear text\"",
+      "detail": "found \"Clear text\""
     },
     {
-      "name": "capture the search",
+      "name": "and the field holds the query",
       "status": "passed",
-      "durationMs": 612,
+      "durationMs": 3555,
+      "action": "assert \"bluetooth\"",
+      "detail": "found \"bluetooth\""
+    },
+    {
+      "name": "capture the typed query",
+      "status": "passed",
+      "durationMs": 903,
       "action": "screenshot search",
       "evidence": [
-        "screenshots/011-search.png"
+        "screenshots/016-search.png"
       ]
-    },
-    {
-      "name": "the text really reached the device",
-      "status": "passed",
-      "durationMs": 2380,
-      "action": "exec uiautomator dump /sdcard/vsim-check.xml >/dev/null 2>&1 && grep -ci 'bluetooth' /sdcard/vsim-check.xml",
-      "detail": "1\n"
     }
   ],
   "checks": [
@@ -114,7 +146,22 @@
       "status": "passed"
     },
     {
-      "id": "hardware acceleration is on",
+      "id": "it is the emulator, not a stray device",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "wait for the home screen",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "the tap really launched it",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "wait for the home screen again",
       "kind": "assert",
       "status": "passed"
     },
@@ -124,26 +171,27 @@
       "status": "passed"
     },
     {
-      "id": "Settings is really in the foreground",
+      "id": "wait for Settings to draw",
       "kind": "assert",
       "status": "passed"
     },
     {
-      "id": "type into the search box",
+      "id": "the typing really reached the field",
       "kind": "assert",
       "status": "passed"
     },
     {
-      "id": "the text really reached the device",
+      "id": "and the field holds the query",
       "kind": "assert",
       "status": "passed"
     }
   ],
   "evidence": {
     "screenshots": [
-      "screenshots/002-home.png",
-      "screenshots/005-settings.png",
-      "screenshots/011-search.png"
+      "screenshots/003-home.png",
+      "screenshots/006-messages.png",
+      "screenshots/011-settings.png",
+      "screenshots/016-search.png"
     ],
     "logs": []
   },
