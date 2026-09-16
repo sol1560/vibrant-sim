@@ -9,10 +9,15 @@
     { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
     {
       "name": "open a document in TextEdit",
-      "exec": "osascript -e 'tell application \"TextEdit\" to activate' -e 'tell application \"TextEdit\" to make new document'; echo opened",
-      "expect": { "code": 0, "contains": "opened" }
+      "comment": "Detached on purpose: `activate` blocks until the app answers an Apple Event, and a cold launch on a 3-core runner takes longer than the request timeout.",
+      "exec": "(osascript -e 'tell application \"TextEdit\" to activate' -e 'tell application \"TextEdit\" to make new document' >/dev/null 2>&1 &); sleep 12; echo launched",
+      "expect": { "code": 0, "contains": "launched" }
     },
-    { "wait": 3000 },
+    {
+      "name": "the document window really exists",
+      "exec": "osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"'",
+      "expect": { "code": 0, "contains": "1" }
+    },
     { "name": "click into the document", "click": [380, 306] },
     { "wait": 800 },
     { "name": "type the first line", "type": "line one" },
