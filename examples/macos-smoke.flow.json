@@ -1,18 +1,27 @@
 {
   "name": "macos desktop smoke",
-  "comment": "Synchronises on the window title rather than on sleeps. A freshly focused window swallows the first keystrokes, and how long that lasts varies run to run.",
+  "comment": "Waits on the window title once, then on the clock. Reading the macOS accessibility tree costs seconds, so it is a synchronisation point to use sparingly, unlike Android.",
   "steps": [
     {
       "name": "the runner really is a graphical login session",
       "exec": "launchctl managername",
-      "expect": { "code": 0, "contains": "Aqua" }
+      "expect": {
+        "code": 0,
+        "contains": "Aqua"
+      }
     },
-    { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
+    {
+      "name": "capture the idle desktop",
+      "screenshot": "idle-desktop"
+    },
     {
       "name": "launch TextEdit",
       "comment": "`open` goes through LaunchServices, which needs no Apple Events authorisation. `tell application \"TextEdit\" to activate` would raise a modal and block.",
       "exec": "open -a TextEdit; echo launched",
-      "expect": { "code": 0, "contains": "launched" }
+      "expect": {
+        "code": 0,
+        "contains": "launched"
+      }
     },
     {
       "name": "wait for the document window",
@@ -20,28 +29,51 @@
       "assertText": "Untitled",
       "timeoutMs": 60000
     },
-    { "name": "click into the document", "click": [380, 308] },
-    { "wait": 2000 },
+    {
+      "name": "click into the document",
+      "click": [
+        380,
+        308
+      ]
+    },
+    {
+      "comment": "Let the click settle before the window is asked to take input.",
+      "wait": 3000
+    },
     {
       "name": "type the first line",
       "type": "line one"
     },
     {
-      "name": "the keystrokes are actually landing",
-      "comment": "TextEdit appends Edited to the title on the first change, which proves the window took the input before the rest of the flow depends on it.",
-      "assertText": "Edited",
-      "timeoutMs": 30000
+      "comment": "A freshly focused window swallows the first keystrokes.",
+      "wait": 4000
     },
-    { "name": "press Return", "key": "Return" },
-    { "wait": 700 },
-    { "name": "type the second line", "type": "line two" },
-    { "wait": 1200 },
-    { "name": "capture the typed document", "screenshot": "after-typing" },
+    {
+      "name": "press Return",
+      "key": "Return"
+    },
+    {
+      "wait": 700
+    },
+    {
+      "name": "type the second line",
+      "type": "line two"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "name": "capture the typed document",
+      "screenshot": "after-typing"
+    },
     {
       "name": "both lines landed, so Return was not swallowed",
       "comment": "Read through System Events, not `tell application \"TextEdit\"`. Talking to the app directly needs Apple Events authorisation and blocks on a modal.",
       "exec": "osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -ci 'line' | tr -d ' '",
-      "expect": { "code": 0, "contains": "2" }
+      "expect": {
+        "code": 0,
+        "contains": "2"
+      }
     }
   ]
 }

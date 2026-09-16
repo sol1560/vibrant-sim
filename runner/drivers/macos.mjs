@@ -269,7 +269,7 @@ export async function tree() {
 	let last = null
 	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
-			;({ stdout } = await run('osascript', [scriptPath], { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 }))
+			;({ stdout } = await run('osascript', [scriptPath], { timeout: 45_000, maxBuffer: 8 * 1024 * 1024 }))
 			last = null
 			break
 		} catch (err) {
