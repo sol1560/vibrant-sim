@@ -21,6 +21,14 @@ agent api https://product-fisher-....trycloudflare.com/__vsim/api
 That screenshot is a browser on one machine looking at a desktop on a GitHub
 runner, while an agent on a third machine types into it through the API.
 
+Linux and Windows hand the browser a real remote-framebuffer session. macOS
+cannot — its built-in VNC server insists on account credentials a hosted runner
+has no way to set — so the gateway also serves its own viewer, which polls the
+same screenshot endpoint the agent drives and posts clicks and keystrokes back
+to the same control API. Tick one box and the person is driving:
+
+![the built-in viewer, with a person typing into a macOS runner from a browser](docs/evidence/macos-builtin-viewer.png)
+
 ## Why
 
 Plenty of projects let an agent drive a screen. None of them bring you the
@@ -143,7 +151,8 @@ then exercised end to end from a separate machine.
 | synthetic input | `xdotool` ✅ | CGEvent via Swift ✅ | `SendInput` + SendKeys ✅ |
 | UI tree | X11 window list ✅ | System Events ✅ | UI Automation ✅ |
 | video | `ffmpeg x11grab` ✅ | `screencapture -v` ✅ | frame sequence ✅ |
-| live picture in a browser | KasmVNC ✅ | built-in VNC + noVNC ✅ | TightVNC + noVNC ✅ |
+| live picture in a browser | KasmVNC ✅ | built-in viewer ✅ | TightVNC + noVNC ✅ |
+| person drives from the browser | ✅ | ✅ | ✅ |
 | tunnel | cloudflared ✅ | cloudflared ✅ | cloudflared ✅ |
 | interactive session, end to end | ✅ | ✅ | ✅ |
 | unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35049009011) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35050143870) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35051228635) |
