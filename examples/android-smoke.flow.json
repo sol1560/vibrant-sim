@@ -65,9 +65,14 @@
       "screenshot": "search"
     },
     {
+      "name": "the search screen really opened",
+      "comment": "Clear text only exists once a search field has content, so it proves both the tap and the typing.",
+      "assertText": "Clear text"
+    },
+    {
       "name": "the query really reached the search field",
-      "comment": "Bluetooth address only exists in search results, never on the Settings home page, so this cannot pass by accident.",
-      "assertText": "Bluetooth address"
+      "comment": "A freshly booted emulator has not finished indexing Settings, so assert on the field, not on results.",
+      "assertText": "bluetooth"
     }
   ]
 }
