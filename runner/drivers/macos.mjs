@@ -230,26 +230,25 @@ export async function stopRecording() {
 const TREE_SCRIPT = `
 set out to ""
 tell application "System Events"
-	set frontApp to ""
 	try
-		set frontApp to name of first application process whose frontmost is true
+		set frontProc to first application process whose frontmost is true
+		set frontName to name of frontProc
+		set out to out & "front|" & frontName & linefeed
+		repeat with w in (windows of frontProc)
+			set wname to ""
+			try
+				set wname to name of w
+			end try
+			set wpos to position of w
+			set wsize to size of w
+			set out to out & "win|" & frontName & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
+		end repeat
 	end try
-	set out to out & "front|" & frontApp & linefeed
-	repeat with pname in (name of every application process whose visible is true)
-		set out to out & "app|" & pname & linefeed
-	end repeat
-	if frontApp is not "" then
-		try
-			tell process frontApp
-				repeat with w in windows
-					set wname to name of w
-					set wpos to position of w
-					set wsize to size of w
-					set out to out & "win|" & frontApp & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
-				end repeat
-			end tell
-		end try
-	end if
+	try
+		repeat with pname in (get name of every application process whose visible is true)
+			set out to out & "app|" & (pname as text) & linefeed
+		end repeat
+	end try
 end tell
 return out
 `
@@ -280,7 +279,7 @@ export async function tree() {
 		}
 	}
 	if (last) {
-		throw new Error(`reading the accessibility tree failed: ${String(last.stderr || last.message).trim().split('\n').pop()}`)
+		throw new Error(`reading the accessibility tree failed: ${String(last.stderr || last.message).trim().slice(0, 400)}`)
 	}
 	const apps = []
 	const windows = []
