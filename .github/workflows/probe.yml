@@ -74,17 +74,26 @@ jobs:
           screencapture -x out/mac-screen.png && echo "SCREENCAPTURE_OK" || echo "SCREENCAPTURE_FAIL"
           if [ -f out/mac-screen.png ]; then
             sips -g pixelWidth -g pixelHeight out/mac-screen.png
-            python3 -c "
-import subprocess,sys
-o=subprocess.run(['sips','-g','pixelWidth','out/mac-screen.png'],capture_output=True,text=True).stdout
-print('size info:',o.strip())
-"
+            echo "bytes: $(stat -f%z out/mac-screen.png)"
           fi
       - name: applescript / UI automation (TCC test)
         run: |
-          osascript -e 'tell application \"System Events\" to get name of every process' 2>&1 | head -5 || echo "OSASCRIPT_FAIL"
-          osascript -e 'tell application \"Finder\" to activate' 2>&1 || echo "ACTIVATE_FAIL"
-          osascript -e 'tell application \"System Events\" to keystroke \"a\"' 2>&1 || echo "KEYSTROKE_FAIL"
+          osascript -e 'tell application "System Events" to get name of every process' 2>&1 | head -5 || echo "OSASCRIPT_FAIL"
+          osascript -e 'tell application "Finder" to activate' 2>&1 || echo "ACTIVATE_FAIL"
+          osascript -e 'tell application "System Events" to keystroke "a"' 2>&1 || echo "KEYSTROKE_FAIL"
+      - name: simulator screenshot (known-good baseline from AmpWatch)
+        run: |
+          xcrun simctl list devices available --json > out/sim-devices.json || echo "SIMCTL_FAIL"
+          udid=$(jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.isAvailable)] | .[0].udid // empty' out/sim-devices.json)
+          echo "picked udid=${udid:-NONE}"
+          if [ -n "$udid" ]; then
+            xcrun simctl boot "$udid" 2>&1 | tail -2 || true
+            xcrun simctl bootstatus "$udid" -b 2>&1 | tail -2 || true
+            xcrun simctl io "$udid" screenshot --type=png out/sim-screen.png && echo "SIM_SCREENSHOT_OK" || echo "SIM_SCREENSHOT_FAIL"
+            timeout 20 xcrun simctl io "$udid" recordVideo --codec=h264 out/sim-video.mp4 &
+            rec=$!; sleep 12; kill -INT $rec 2>/dev/null; wait $rec 2>/dev/null || true
+            ls -l out/ || true
+          fi
       - name: enable built-in VNC (ARD)
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
