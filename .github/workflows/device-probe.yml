@@ -44,13 +44,18 @@ jobs:
         run: |
           set -x
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          # avdmanager writes to $ANDROID_SDK_ROOT/.android/avd when that is
+          # set, but the emulator never looks there. Pin the one location both
+          # of them agree on.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDK" --licenses > /dev/null 2>&1 || true
           "$SDK" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" 2>&1 | tail -3
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
             -n probe -k "system-images;android-35;google_apis;x86_64" -d pixel_6 --force
-          ls -l "$ANDROID_HOME/emulator/emulator"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
           "$ANDROID_HOME/emulator/emulator" -accel-check || true
           adb start-server
           # Full path, no -accel flag: the launcher resolves its engine relative

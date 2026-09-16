@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { seal } from './envelope.mjs'
@@ -195,20 +196,30 @@ async function startAndroidEmulator() {
 	const sdkmanager = join(sdk, 'cmdline-tools/latest/bin/sdkmanager')
 	const avdmanager = join(sdk, 'cmdline-tools/latest/bin/avdmanager')
 
+	// avdmanager writes to $ANDROID_SDK_ROOT/.android/avd when that is set, but
+	// the emulator never looks there, so pin the location both agree on.
+	const avdHome = join(process.env.HOME || homedir(), '.android/avd')
+	mkdirSync(avdHome, { recursive: true })
+	const androidEnv = {
+		...process.env,
+		ANDROID_SDK_ROOT: sdk,
+		ANDROID_AVD_HOME: avdHome,
+		PATH: `${join(sdk, 'emulator')}:${join(sdk, 'platform-tools')}:${process.env.PATH}`,
+	}
+
 	log(`installing ${image}`)
-	await shellCommand(`yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true`)
-	await shellCommand(`"${sdkmanager}" "platform-tools" "emulator" "${image}" > sdk-install.log 2>&1`)
-	await shellCommand(`echo no | "${avdmanager}" create avd -n vsim -k "${image}" --force > /dev/null 2>&1`)
+	await shellCommand(`yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true`, { env: androidEnv })
+	await shellCommand(`"${sdkmanager}" "platform-tools" "emulator" "${image}" > sdk-install.log 2>&1`, { env: androidEnv })
+	await shellCommand(`echo no | "${avdmanager}" create avd -n vsim -k "${image}" --force > /dev/null 2>&1`, { env: androidEnv })
 
 	log('booting the emulator')
-	const emulatorEnv = { ...process.env, PATH: `${join(sdk, 'emulator')}:${join(sdk, 'platform-tools')}:${process.env.PATH}` }
 	background(join(sdk, 'emulator/emulator'),
 		['-avd', 'vsim', '-no-window', '-no-audio', '-no-boot-anim',
 			'-gpu', 'swiftshader_indirect', '-no-snapshot', '-camera-back', 'none', '-camera-front', 'none'],
-		{ env: emulatorEnv })
+		{ env: androidEnv })
 
 	const adb = join(sdk, 'platform-tools/adb')
-	await sh(adb, ['wait-for-device'])
+	await sh(adb, ['wait-for-device'], { env: androidEnv })
 	await shellCommand(
 		`"${adb}" shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'`,
 	)
