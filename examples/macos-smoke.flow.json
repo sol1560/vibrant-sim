@@ -8,11 +8,14 @@
     },
     { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
     {
-      "name": "open a document in TextEdit",
-      "comment": "Detached on purpose: `activate` blocks until the app answers an Apple Event, and a cold launch on a 3-core runner takes longer than the request timeout.",
-      "exec": "(osascript -e 'tell application \"TextEdit\" to activate' -e 'tell application \"TextEdit\" to make new document' >/dev/null 2>&1 &); sleep 12; echo launched",
+      "name": "launch TextEdit",
+      "comment": "`open` goes through LaunchServices, which needs no Apple Events authorisation. `tell application \"TextEdit\" to activate` would raise a modal and block.",
+      "exec": "open -a TextEdit; echo launched",
       "expect": { "code": 0, "contains": "launched" }
     },
+    { "wait": 8000 },
+    { "name": "new document, with a keystroke rather than an Apple Event", "key": "cmd+n" },
+    { "wait": 3000 },
     {
       "name": "the document window really exists",
       "exec": "osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"'",
@@ -27,7 +30,8 @@
     { "name": "capture the typed document", "screenshot": "after-typing" },
     {
       "name": "both lines landed, so Return was not swallowed",
-      "exec": "osascript -e 'tell application \"TextEdit\" to get text of document 1' | tr '\\r' '\\n' | grep -c . | tr -d ' '",
+      "comment": "Read through System Events, not `tell application \"TextEdit\"`. Talking to the app directly needs Apple Events authorisation and blocks on a modal; System Events does not.",
+      "exec": "osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -c . | tr -d ' '",
       "expect": { "code": 0, "contains": "2" }
     }
   ]

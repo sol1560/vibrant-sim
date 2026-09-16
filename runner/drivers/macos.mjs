@@ -104,6 +104,55 @@ export async function prepare() {
 	await writeFile(source, SWIFT_SOURCE, 'utf8')
 	await run('swiftc', ['-O', '-o', binary, source], { timeout: 180_000 })
 	inputTool = binary
+	startPromptWatcher()
+}
+
+// The first `tell application "Safari"` of a session raises a modal asking to
+// allow controlling that app, and it blocks the osascript that triggered it
+// until someone answers. Nobody is sitting there, so an unattended run hangs.
+//
+// Synthetic CGEvent input needs no authorisation, and System Events can read
+// the dialog, so the session clicks the button itself. This is safe precisely
+// because the machine is single-use and gone minutes later; do not copy this
+// onto a workstation.
+const PROMPT_BUTTON_SCRIPT = `
+  tell application "System Events"
+    set out to ""
+    repeat with pname in {"CoreServicesUIAgent", "UserNotificationCenter", "universalAccessAuthWarn"}
+      try
+        tell process pname
+          repeat with w in (every window)
+            repeat with b in (every button of w)
+              if name of b is in {"Allow", "OK", "Always Allow"} then
+                set p to position of b
+                set s to size of b
+                set out to out & ((item 1 of p) + (item 1 of s) / 2) & "," & ((item 2 of p) + (item 2 of s) / 2) & linefeed
+              end if
+            end repeat
+          end repeat
+        end tell
+      end try
+    end repeat
+    return out
+  end tell`
+
+let promptWatcher = null
+
+function startPromptWatcher() {
+	if (promptWatcher) return
+	promptWatcher = setInterval(async () => {
+		try {
+			const { stdout } = await run('osascript', ['-e', PROMPT_BUTTON_SCRIPT], { timeout: 8000 })
+			for (const line of stdout.trim().split('\n').filter(Boolean)) {
+				const [x, y] = line.split(',').map(Number)
+				if (Number.isFinite(x) && Number.isFinite(y)) {
+					console.log(`[vsim] dismissing an authorisation prompt at ${Math.round(x)},${Math.round(y)}`)
+					await input(['click', Math.round(x), Math.round(y)])
+				}
+			}
+		} catch { /* System Events is busy; try again on the next tick */ }
+	}, 3000)
+	promptWatcher.unref?.()
 }
 
 async function input(args) {
