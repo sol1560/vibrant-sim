@@ -158,6 +158,20 @@ then exercised end to end from a separate machine.
 | interactive session, end to end | ✅ | ✅ | ✅ |
 | unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35049009011) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35050143870) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35051228635) |
 
+And the simulators:
+
+| | Android | iOS / watchOS / tvOS / visionOS |
+|---|---|---|
+| runner | x64 Linux, KVM | macOS |
+| screenshot | `adb screencap` ✅ | `simctl io screenshot` ✅ |
+| input | `adb input` ✅ | CGEvent, mapped into the window ✅ |
+| accessibility tree | uiautomator, full ✅ | none outside XCUITest |
+| video | `adb screenrecord` ✅ | `simctl io recordVideo` ✅ |
+| unattended `vsim run` | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35069187087) | [✅](https://github.com/sol1560/vibrant-sim/actions/runs/35062586105) |
+
+`-accel-check` reports *KVM (version 12) is installed and usable* once the udev
+rule is in place, and all four Apple families boot, screenshot and record.
+
 ✅ means it was run and the output was inspected, not that it should work. Each
 unattended run ends with an assertion read back off the machine — not from the
 screenshot — that two typed lines really became two lines.
@@ -259,6 +273,17 @@ to running because of the tap
   before typing.
 - **`bare notepad` does not resolve under PowerShell 7 on Server 2025.** Use the
   full path.
+- **A hosted runner has no GPU**, so an emulator renders in software. The Pixel
+  launcher goes not-responding unless animations are off, and `screencap` came
+  back a single flat colour until Vulkan was disabled — while the accessibility
+  tree listed a fully drawn home screen. Read the tree before believing a
+  screenshot.
+- **Android timing varies run to run.** Synchronise on what is on screen, with
+  `assertText` and `tapText`'s `until`, not on sleeps. Every fixed wait long
+  enough once was too short later.
+- **Settings search is unreliable on an emulator without Play services**, which
+  is the application's problem rather than the driver's; `until` retries the tap
+  until the screen it wanted appears.
 - **UI Automation's `ValuePattern` does not reach the document** in the WinUI
   Notepad that ships with Server 2025. Read the text back through the clipboard.
 
