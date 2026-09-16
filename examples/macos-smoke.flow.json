@@ -9,29 +9,29 @@
     { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
     {
       "name": "launch TextEdit",
-      "comment": "`open` goes through LaunchServices, which needs no Apple Events authorisation. `tell application \"TextEdit\" to activate` would raise a modal and block.",
+      "comment": "`open` goes through LaunchServices, which needs no Apple Events authorisation, and it already creates an untitled document. `tell application \"TextEdit\" to activate` would raise a modal and block.",
       "exec": "open -a TextEdit; echo launched",
       "expect": { "code": 0, "contains": "launched" }
     },
-    { "wait": 8000 },
-    { "name": "new document, with a keystroke rather than an Apple Event", "key": "cmd+n" },
-    { "wait": 3000 },
+    { "wait": 10000 },
     {
-      "name": "the document window really exists",
-      "exec": "osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"'",
-      "expect": { "code": 0, "contains": "1" }
+      "name": "a document window is up",
+      "comment": "Read through System Events. Talking to TextEdit directly needs Apple Events authorisation.",
+      "exec": "osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"' | awk '$1 >= 1 { print \"window-present\" }'",
+      "expect": { "code": 0, "contains": "window-present" }
     },
-    { "name": "click into the document", "click": [380, 306] },
-    { "wait": 800 },
+    { "name": "click into the document", "click": [380, 308] },
+    { "comment": "A freshly focused window drops the first keystrokes.", "wait": 2500 },
     { "name": "type the first line", "type": "line one" },
+    { "wait": 700 },
     { "name": "press Return", "key": "Return" },
+    { "wait": 700 },
     { "name": "type the second line", "type": "line two" },
-    { "wait": 1200 },
+    { "wait": 1500 },
     { "name": "capture the typed document", "screenshot": "after-typing" },
     {
       "name": "both lines landed, so Return was not swallowed",
-      "comment": "Read through System Events, not `tell application \"TextEdit\"`. Talking to the app directly needs Apple Events authorisation and blocks on a modal; System Events does not.",
-      "exec": "osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -c . | tr -d ' '",
+      "exec": "osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -ci 'line' | tr -d ' '",
       "expect": { "code": 0, "contains": "2" }
     }
   ]
