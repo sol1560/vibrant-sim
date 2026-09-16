@@ -178,12 +178,29 @@ async function tapByText(text, exact, { attempts = 4, gapMs = 1500 } = {}) {
 		throw new Error(`nothing matching ${JSON.stringify(text)} on screen. Visible: ${seen.join(' | ') || 'nothing labelled'}`)
 	}
 
-	const [x, y] = target.centre ?? [
-		Math.round(target.x + (target.width ?? 0) / 2),
-		Math.round(target.y + (target.height ?? 0) / 2),
+	const centreOf = (node) => node.centre ?? [
+		Math.round(node.x + (node.width ?? 0) / 2),
+		Math.round(node.y + (node.height ?? 0) / 2),
 	]
+	let [x, y] = centreOf(target)
+
+	// A label is usually a plain text node; the thing that responds to a tap is
+	// the control wrapping it. Tap the smallest tappable box containing it.
+	if (!target.clickable) {
+		const container = windows
+			.filter((node) =>
+				node.clickable &&
+				x >= node.x && x <= node.x + (node.width ?? 0) &&
+				y >= node.y && y <= node.y + (node.height ?? 0))
+			.sort((a, b) => (a.width ?? 0) * (a.height ?? 0) - (b.width ?? 0) * (b.height ?? 0))[0]
+		if (container) {
+			target = container
+			;[x, y] = centreOf(container)
+		}
+	}
+
 	await driver.click(x, y, 'left')
-	return { tapped: labelOf(target), x, y }
+	return { tapped: labelOf(target) || target.id || 'unlabelled control', x, y }
 }
 
 /**
