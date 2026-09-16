@@ -14,6 +14,8 @@ export type FlowStep = {
 	tapText?: string
 	/** Asserts a label is on screen; needs a platform with a tree. */
 	assertText?: string
+	/** How long tapText and assertText keep looking. Default is about 18s. */
+	timeoutMs?: number
 	/** Windows only: bring a window to the front before interacting with it. */
 	focus?: string
 	screenshot?: string
@@ -97,11 +99,11 @@ export async function runFlow(
 				}
 			}
 			if (step.tapText) {
-				const hit = await session.tapText(step.tapText)
+				const hit = await session.tapText(step.tapText, false, step.timeoutMs)
 				record.detail = `tapped ${JSON.stringify(hit.tapped)} at ${hit.x},${hit.y}`
 			}
 			if (step.assertText) {
-				const hit = await session.assertText(step.assertText)
+				const hit = await session.assertText(step.assertText, false, step.timeoutMs)
 				record.detail = `found ${JSON.stringify(hit.label)}`
 				checks.push({ id: name, kind: 'assert', status: 'passed' })
 			}
