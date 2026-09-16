@@ -55,9 +55,9 @@ jobs:
         run: |
           set -uo pipefail
           node src/cli.ts run --flow "${{ inputs.flow || 'examples/smoke.flow.json' }}" \
-            --local .vsim/handle.json --evidence .vsim-out
+            --local .vsim/handle.json --evidence vsim-out
           code=$?
-          status=$(node -e "process.stdout.write(require('./.vsim-out/vsim.result.json').status)")
+          status=$(node -e "process.stdout.write(require('./vsim-out/vsim.result.json').status)")
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit $code
 
@@ -76,8 +76,10 @@ jobs:
         with:
           name: vsim-evidence-${{ inputs.os || 'linux' }}-${{ github.run_attempt }}
           path: |
-            .vsim-out
+            vsim-out
             .vsim/evidence
+          # .vsim/evidence is a dotted path, which v4 skips by default.
+          include-hidden-files: true
           if-no-files-found: warn
 
   gate:

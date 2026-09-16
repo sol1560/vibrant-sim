@@ -106,7 +106,7 @@ async function run(flags: Flags): Promise<void> {
 	const flowPath = str(flags, 'flow', '')
 	if (!flowPath) throw new Error('vsim run needs --flow <file.json>')
 	const flow = parseFlow(readFileSync(flowPath, 'utf8'))
-	const evidenceDir = str(flags, 'evidence', '.vsim-out')
+	const evidenceDir = str(flags, 'evidence', 'vsim-out')
 
 	// Three ways in: a handle file written by a session on this same machine
 	// (the unattended path), an existing remote session, or a fresh one.
