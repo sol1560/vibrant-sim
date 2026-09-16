@@ -49,6 +49,39 @@ const api = (action, body) =>
     body: body ? JSON.stringify(body) : undefined,
   })
 
+// Input has to go out in order. Firing a request per keystroke lets them race,
+// and the machine ends up with the letters shuffled.
+let queue = Promise.resolve()
+const enqueue = (action, body) => {
+  queue = queue.then(() => api(action, body)).catch(() => {})
+  return queue
+}
+
+// Typing one request per character is also needlessly slow, so characters are
+// gathered for a moment and sent as one string.
+let pending = ''
+let flushTimer = null
+
+function flushTyping() {
+  clearTimeout(flushTimer)
+  flushTimer = null
+  if (!pending) return
+  const text = pending
+  pending = ''
+  enqueue('type', { text })
+}
+
+function typeChar(ch) {
+  pending += ch
+  if (!flushTimer) flushTimer = setTimeout(flushTyping, 60)
+}
+
+/** Anything that is not a character has to wait for the buffered text. */
+function sendNow(action, body) {
+  flushTyping()
+  enqueue(action, body)
+}
+
 const screen = document.getElementById('screen')
 const statusEl = document.getElementById('status')
 const dot = document.getElementById('dot')
@@ -101,7 +134,7 @@ screen.addEventListener('click', (event) => {
   // someone still fiddling with the checkbox and dropped.
   screen.focus()
   const { x, y } = screenPoint(event)
-  api('click', { x, y })
+  sendNow('click', { x, y })
 })
 
 drive.addEventListener('change', () => {
@@ -115,7 +148,7 @@ screen.addEventListener('contextmenu', (event) => {
   if (!drive.checked) return
   event.preventDefault()
   const { x, y } = screenPoint(event)
-  api('click', { x, y, button: 'right' })
+  sendNow('click', { x, y, button: 'right' })
 })
 
 const NAMED_KEYS = {
@@ -130,7 +163,7 @@ window.addEventListener('keydown', (event) => {
   const named = NAMED_KEYS[event.key]
   if (named) {
     event.preventDefault()
-    return void api('key', { combo: named })
+    return void sendNow('key', { combo: named })
   }
   if (event.metaKey || event.ctrlKey || event.altKey) {
     if (event.key.length !== 1) return
@@ -141,11 +174,11 @@ window.addEventListener('keydown', (event) => {
     if (event.altKey) parts.push('alt')
     if (event.shiftKey) parts.push('shift')
     parts.push(event.key.toLowerCase())
-    return void api('key', { combo: parts.join('+') })
+    return void sendNow('key', { combo: parts.join('+') })
   }
   if (event.key.length === 1) {
     event.preventDefault()
-    api('type', { text: event.key })
+    typeChar(event.key)
   }
 })
 
