@@ -160,6 +160,9 @@ async function input(args) {
 	await run(inputTool, args.map(String))
 }
 
+/** The simulator driver reuses this rather than compiling a second helper. */
+export const rawInput = input
+
 export async function info() {
 	const { stdout } = await run('osascript', [
 		'-e',

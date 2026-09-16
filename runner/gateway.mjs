@@ -30,10 +30,25 @@ if (!PAIRING_KEY) {
 	process.exit(1)
 }
 
-const driver = await import(
-	{ linux: './drivers/linux.mjs', darwin: './drivers/macos.mjs', macos: './drivers/macos.mjs', win32: './drivers/windows.mjs', windows: './drivers/windows.mjs' }[PLATFORM] ??
-	'./drivers/linux.mjs'
-)
+const DRIVERS = {
+	linux: './drivers/linux.mjs',
+	darwin: './drivers/macos.mjs',
+	macos: './drivers/macos.mjs',
+	win32: './drivers/windows.mjs',
+	windows: './drivers/windows.mjs',
+	android: './drivers/android.mjs',
+	ios: './drivers/apple-sim.mjs',
+	watchos: './drivers/apple-sim.mjs',
+	tvos: './drivers/apple-sim.mjs',
+	visionos: './drivers/apple-sim.mjs',
+}
+
+const driverPath = DRIVERS[PLATFORM]
+if (!driverPath) {
+	console.error(`no driver for platform "${PLATFORM}"; known: ${Object.keys(DRIVERS).join(', ')}`)
+	process.exit(1)
+}
+const driver = await import(driverPath)
 
 let lastActivity = Date.now()
 const touch = () => { lastActivity = Date.now() }
@@ -221,6 +236,12 @@ const server = createServer(async (req, res) => {
 	touch()
 
 	if (url.pathname.startsWith('/__vsim/api/')) return handleApi(req, res, url)
+	// A simulator session has no framebuffer server to proxy; the built-in
+	// viewer is the only picture, so send the root there.
+	if (!UPSTREAM_PORT && url.pathname === '/') {
+		res.writeHead(302, { location: '/__vsim/view' })
+		return res.end()
+	}
 	if (url.pathname === '/__vsim/view') {
 		const page = readFileSync(new URL('./viewer.html', import.meta.url))
 		res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': page.length })

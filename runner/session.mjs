@@ -20,7 +20,11 @@ const TTL_MINUTES = Math.min(Number(process.env.VSIM_TTL_MINUTES || 30), 330)
 const IDLE_MINUTES = Number(process.env.VSIM_IDLE_MINUTES || 10)
 const OUT_DIR = process.env.VSIM_OUT_DIR || '.vsim'
 const GATEWAY_PORT = 7890
-const DESKTOP_PORT = OS === 'linux' ? 3000 : 6080
+// Simulators have no framebuffer server to put a browser in front of, so they
+// run with no upstream and the gateway's own viewer is the picture.
+const DEVICE_TARGETS = new Set(['android', 'ios', 'watchos', 'tvos', 'visionos'])
+const IS_DEVICE = DEVICE_TARGETS.has(OS)
+const DESKTOP_PORT = IS_DEVICE ? 0 : OS === 'linux' ? 3000 : 6080
 const VNC_PASSWORD = 'vs' + randomBytes(3).toString('hex') // VNC legacy caps this at 8 chars
 
 if (USE_TUNNEL && !RECIPIENT) throw new Error('VSIM_RECIPIENT_KEY is required when a tunnel is exposed')
@@ -172,6 +176,45 @@ async function startWindowsDesktop() {
 		{ stdio: 'ignore', detached: false })
 }
 
+async function startAndroidEmulator() {
+	const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT
+	if (!sdk) throw new Error('ANDROID_HOME is not set; Android needs an x64 Linux runner')
+
+	// Without this rule /dev/kvm is root-only, the emulator silently falls back
+	// to software rendering, and everything runs two to three times slower.
+	// GitHub's own documentation does not mention it.
+	log('granting access to /dev/kvm')
+	await shellCommand(
+		'echo \'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"\' ' +
+		'| sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null && ' +
+		'sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm',
+	)
+	if (!existsSync('/dev/kvm')) throw new Error('this runner has no /dev/kvm; Android needs x64 Linux')
+
+	const image = process.env.VSIM_ANDROID_IMAGE || 'system-images;android-35;google_apis;x86_64'
+	const sdkmanager = join(sdk, 'cmdline-tools/latest/bin/sdkmanager')
+	const avdmanager = join(sdk, 'cmdline-tools/latest/bin/avdmanager')
+
+	log(`installing ${image}`)
+	await shellCommand(`yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true`)
+	await shellCommand(`"${sdkmanager}" "platform-tools" "emulator" "${image}" > sdk-install.log 2>&1`)
+	await shellCommand(`echo no | "${avdmanager}" create avd -n vsim -k "${image}" --force > /dev/null 2>&1`)
+
+	log('booting the emulator')
+	const emulatorEnv = { ...process.env, PATH: `${join(sdk, 'emulator')}:${join(sdk, 'platform-tools')}:${process.env.PATH}` }
+	background(join(sdk, 'emulator/emulator'),
+		['-avd', 'vsim', '-no-window', '-no-audio', '-no-boot-anim',
+			'-gpu', 'swiftshader_indirect', '-no-snapshot', '-camera-back', 'none', '-camera-front', 'none'],
+		{ env: emulatorEnv })
+
+	const adb = join(sdk, 'platform-tools/adb')
+	await sh(adb, ['wait-for-device'])
+	await shellCommand(
+		`"${adb}" shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'`,
+	)
+	log('the emulator has finished booting')
+}
+
 // --- orchestration -----------------------------------------------------------
 
 async function startTunnel(port) {
@@ -208,7 +251,10 @@ const idleFile = join(OUT_DIR, 'idle-seconds')
 if (OS === 'linux') await startLinuxDesktop()
 else if (OS === 'macos' || OS === 'darwin') await startMacDesktop()
 else if (OS === 'windows' || OS === 'win32') await startWindowsDesktop()
-else throw new Error(`unsupported VSIM_OS: ${OS}`)
+else if (OS === 'android') await startAndroidEmulator()
+// The Apple simulator driver discovers, boots and opens its own device; there
+// is nothing for the session to set up first.
+else if (!DEVICE_TARGETS.has(OS)) throw new Error(`unsupported VSIM_OS: ${OS}`)
 
 log('starting the gateway')
 background(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta.url))], {
@@ -218,6 +264,7 @@ background(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta
 		VSIM_GATEWAY_PORT: String(GATEWAY_PORT),
 		VSIM_UPSTREAM_PORT: String(DESKTOP_PORT),
 		VSIM_PLATFORM: OS,
+		VSIM_SIM_FAMILY: OS,
 		VSIM_IDLE_FILE: idleFile,
 		VSIM_STOP_FILE: join(OUT_DIR, 'stop'),
 		VSIM_EVIDENCE_DIR: join(OUT_DIR, 'evidence'),
@@ -240,9 +287,9 @@ if (USE_TUNNEL) {
 
 // webtop and TightVNC hand a browser a real remote-framebuffer session. macOS
 // cannot: its built-in VNC server demands account credentials, and a hosted
-// runner has no secure token to reset the account password with. The built-in
-// viewer polls the same screenshot endpoint the agent uses, so the picture is
-// there either way.
+// runner has no secure token to reset the account password with. Simulators
+// have no framebuffer server at all. The built-in viewer polls the same
+// screenshot endpoint the agent uses, so the picture is there either way.
 const viewerPath = OS === 'linux'
 	? '/'
 	: OS === 'windows'

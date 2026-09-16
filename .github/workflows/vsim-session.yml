@@ -15,7 +15,7 @@ on:
       os:
         description: Which machine to bring up
         type: choice
-        options: [linux, macos, windows]
+        options: [linux, macos, windows, android, ios, watchos, tvos, visionos]
         default: linux
       recipient_key:
         description: base64url X25519 public key; the session handle is sealed to it
@@ -34,7 +34,10 @@ permissions: {}
 jobs:
   session:
     name: "${{ inputs.os }} session"
-    runs-on: ${{ inputs.os == 'macos' && 'macos-latest' || inputs.os == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    runs-on: >-
+      ${{ (inputs.os == 'macos' || inputs.os == 'ios' || inputs.os == 'watchos' || inputs.os == 'tvos' || inputs.os == 'visionos') && 'macos-latest'
+       || inputs.os == 'windows' && 'windows-latest'
+       || 'ubuntu-latest' }}
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -44,11 +47,11 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ inputs.os }}" in
-            linux)
+            linux|android)
               curl -fsSL -o /usr/local/bin/cloudflared \
                 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
               chmod +x /usr/local/bin/cloudflared ;;
-            macos)
+            macos|ios|watchos|tvos|visionos)
               curl -fsSL -o cf.tgz \
                 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz
               tar xzf cf.tgz && sudo mv cloudflared /usr/local/bin/ && chmod +x /usr/local/bin/cloudflared ;;

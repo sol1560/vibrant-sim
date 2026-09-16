@@ -1,0 +1,157 @@
+// Android emulator driver.
+//
+// The emulator only runs at a usable speed on an x64 Linux runner with KVM, and
+// KVM needs a udev rule the GitHub docs do not mention; session.mjs installs it.
+//
+// Unlike the desktop platforms, Android hands out a real accessibility tree
+// through uiautomator, with element text, resource ids, bounds and whether each
+// node is clickable. Read that before reaching for a screenshot.
+
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const run = promisify(execFile)
+const ADB = process.env.VSIM_ADB || 'adb'
+const SERIAL = process.env.VSIM_ANDROID_SERIAL || 'emulator-5554'
+
+function adb(args, options = {}) {
+	return run(ADB, ['-s', SERIAL, ...args], { maxBuffer: 64 * 1024 * 1024, ...options })
+}
+
+async function shell(command) {
+	const { stdout } = await adb(['shell', command], { encoding: 'utf8' })
+	return stdout.trim()
+}
+
+export async function prepare() {
+	await adb(['wait-for-device'])
+	// A device that answers adb is not necessarily finished booting.
+	await shell('while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 1; done')
+}
+
+export async function info() {
+	const size = await shell('wm size')
+	const [, width, height] = size.match(/(\d+)x(\d+)/) ?? []
+	const density = (await shell('wm density')).match(/(\d+)/)?.[1]
+	return {
+		os: 'android',
+		display: `${await shell('getprop ro.build.version.release')} (api ${await shell('getprop ro.build.version.sdk')})`,
+		width: Number(width),
+		height: Number(height),
+		density: Number(density),
+		serial: SERIAL,
+	}
+}
+
+export async function screenshot() {
+	// exec-out keeps the PNG binary-clean; `shell screencap` mangles newlines.
+	const { stdout } = await adb(['exec-out', 'screencap', '-p'], { encoding: 'buffer' })
+	if (!stdout.length) throw new Error('screencap produced no bytes')
+	return stdout
+}
+
+export const click = (x, y) => shell(`input tap ${Number(x)} ${Number(y)}`)
+
+/** There is no pointer to move on a touch screen; a tap is the whole gesture. */
+export const move = (x, y) => shell(`input tap ${Number(x)} ${Number(y)}`)
+
+export async function typeText(text) {
+	// `input text` reads spaces as argument separators and chokes on shell
+	// metacharacters, so send it one safely escaped chunk at a time.
+	for (const chunk of String(text).match(/.{1,120}/gs) ?? []) {
+		const escaped = chunk
+			.replace(/(["'`\\$&|;<>()~*?\[\]{}!#])/g, '\\$1')
+			.replace(/ /g, '%s')
+		await shell(`input text "${escaped}"`)
+	}
+}
+
+const KEYCODES = {
+	return: 'KEYCODE_ENTER', enter: 'KEYCODE_ENTER', tab: 'KEYCODE_TAB',
+	space: 'KEYCODE_SPACE', delete: 'KEYCODE_DEL', backspace: 'KEYCODE_DEL',
+	escape: 'KEYCODE_ESCAPE', back: 'KEYCODE_BACK', home: 'KEYCODE_HOME',
+	menu: 'KEYCODE_MENU', power: 'KEYCODE_POWER', search: 'KEYCODE_SEARCH',
+	up: 'KEYCODE_DPAD_UP', down: 'KEYCODE_DPAD_DOWN',
+	left: 'KEYCODE_DPAD_LEFT', right: 'KEYCODE_DPAD_RIGHT',
+	volumeup: 'KEYCODE_VOLUME_UP', volumedown: 'KEYCODE_VOLUME_DOWN',
+	appswitch: 'KEYCODE_APP_SWITCH', recents: 'KEYCODE_APP_SWITCH',
+}
+
+export async function key(combo) {
+	const name = String(combo).toLowerCase().replace(/[\s_-]/g, '')
+	const code = KEYCODES[name] ?? (/^KEYCODE_[A-Z0-9_]+$/.test(combo) ? combo : null)
+	if (!code) throw new Error(`unknown key: ${combo}`)
+	await shell(`input keyevent ${code}`)
+}
+
+export async function exec(command) {
+	try {
+		const { stdout, stderr } = await adb(['shell', command], { encoding: 'utf8' })
+		return { stdout, stderr, code: 0 }
+	} catch (err) {
+		return { stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? err.message), code: err.code ?? 1 }
+	}
+}
+
+/** Real accessibility tree: text, ids, bounds, and what is actually tappable. */
+export async function tree() {
+	await shell('uiautomator dump /sdcard/vsim-ui.xml')
+	const { stdout } = await adb(['exec-out', 'cat', '/sdcard/vsim-ui.xml'], { encoding: 'utf8' })
+
+	const nodes = []
+	for (const match of stdout.matchAll(/<node\b([^>]*)\/?>/g)) {
+		const attrs = Object.fromEntries(
+			[...match[1].matchAll(/(\w[\w-]*)="([^"]*)"/g)].map(([, k, v]) => [k, v]),
+		)
+		const bounds = attrs.bounds?.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/)
+		if (!bounds) continue
+		const [, x1, y1, x2, y2] = bounds.map(Number)
+		// A node with no label and no id is layout, not something to act on.
+		if (!attrs.text && !attrs['content-desc'] && !attrs['resource-id']) continue
+		nodes.push({
+			text: attrs.text || undefined,
+			label: attrs['content-desc'] || undefined,
+			id: attrs['resource-id'] || undefined,
+			class: attrs.class,
+			clickable: attrs.clickable === 'true',
+			enabled: attrs.enabled === 'true',
+			x: x1,
+			y: y1,
+			width: x2 - x1,
+			height: y2 - y1,
+			centre: [Math.round((x1 + x2) / 2), Math.round((y1 + y2) / 2)],
+		})
+	}
+	return { kind: 'android-uiautomator', windows: nodes }
+}
+
+let recording = null
+
+export async function startRecording(name, localPath) {
+	if (recording) throw new Error('already recording')
+	const remote = `/sdcard/${name}.mp4`
+	await shell(`rm -f ${remote}`)
+	// screenrecord caps at three minutes per file; long sessions get a series.
+	const child = execFile(ADB, ['-s', SERIAL, 'shell', 'screenrecord', '--time-limit', '180', remote])
+	recording = { remote, localPath, child }
+	await new Promise((r) => setTimeout(r, 1500))
+	return { kind: 'screenrecord', name }
+}
+
+export async function stopRecording(localPath) {
+	if (!recording) throw new Error('not recording')
+	const { remote, child } = recording
+	recording = null
+	child.kill('SIGINT')
+	// screenrecord finalises the container after the signal; pulling too early
+	// yields a file that will not play.
+	await new Promise((r) => setTimeout(r, 3500))
+	await adb(['pull', remote, localPath])
+	return { path: localPath }
+}
+
+/** Installs and launches an APK, which is what most flows actually want. */
+export async function installApp(apkPath) {
+	await adb(['install', '-r', '-g', apkPath])
+	return { installed: apkPath }
+}

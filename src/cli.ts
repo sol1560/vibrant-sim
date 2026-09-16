@@ -19,6 +19,7 @@ import {
 } from './lib/store.ts'
 
 const WORKFLOW = 'vsim-session.yml'
+const TARGETS = ['linux', 'macos', 'windows', 'android', 'ios', 'watchos', 'tvos', 'visionos']
 
 type Flags = Record<string, string | boolean>
 
@@ -195,7 +196,7 @@ async function approve(positional: string[], flags: Flags): Promise<void> {
 /** Shared by `session start` and `run`. */
 async function startSession(flags: Flags): Promise<SessionRecord> {
 	const os = str(flags, 'os', 'linux')
-	if (!['linux', 'macos', 'windows'].includes(os)) throw new Error(`unknown --os: ${os}`)
+	if (!TARGETS.includes(os)) throw new Error(`unknown --os: ${os}. Try one of ${TARGETS.join(', ')}`)
 
 	const repo = resolveRepo(typeof flags.repo === 'string' ? flags.repo : undefined)
 	const github = new GitHub(repo, resolveToken())
@@ -298,7 +299,9 @@ async function doctor(): Promise<void> {
 
 const USAGE = `vsim — on-demand cloud machines with a screen
 
-  vsim session start [--os linux|macos|windows] [--ttl 30] [--idle 10] [--repo o/r] [--json]
+  vsim session start [--os <target>] [--ttl 30] [--idle 10] [--repo o/r] [--json]
+      desktops:   linux, macos, windows
+      simulators: android, ios, watchos, tvos, visionos
   vsim session list
   vsim session end [id]
 

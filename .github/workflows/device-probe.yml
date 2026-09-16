@@ -43,18 +43,28 @@ jobs:
       - name: Create and boot an AVD
         run: |
           set -x
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDK" --licenses > /dev/null 2>&1 || true
-          "$SDK" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" 2>&1 | tail -5
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          "$SDK" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" 2>&1 | tail -3
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
             -n probe -k "system-images;android-35;google_apis;x86_64" -d pixel_6 --force
-          nohup emulator -avd probe -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect \
-            -accel on -no-snapshot > /tmp/emulator.log 2>&1 &
+          ls -l "$ANDROID_HOME/emulator/emulator"
+          "$ANDROID_HOME/emulator/emulator" -accel-check || true
+          adb start-server
+          # Full path, no -accel flag: the launcher resolves its engine relative
+          # to itself, and -accel on aborts instead of reporting why.
+          "$ANDROID_HOME/emulator/emulator" -avd probe \
+            -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back none -camera-front none \
+            > /tmp/emulator.log 2>&1 &
+          echo "emulator pid $!"
           timeout 420 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 2; done' \
             && echo "BOOT_OK" || echo "BOOT_FAIL"
           adb devices
-          grep -iE "kvm|accel|hax" /tmp/emulator.log | head -10 || true
+          echo "=== emulator.log (whole file) ==="
+          cat /tmp/emulator.log || echo "no log at all"
 
       - name: Drive it
         run: |
