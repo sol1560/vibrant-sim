@@ -5,16 +5,28 @@
     {
       "name": "the emulator finished booting",
       "exec": "getprop sys.boot_completed",
-      "expect": { "code": 0, "contains": "1" }
+      "expect": {
+        "code": 0,
+        "contains": "1"
+      }
     },
     {
       "name": "it is the emulator, not a stray device",
       "exec": "getprop ro.hardware",
-      "expect": { "code": 0, "contains": "ranchu" }
+      "expect": {
+        "code": 0,
+        "contains": "ranchu"
+      }
     },
-    { "name": "wait for the home screen", "assertText": "Google search", "timeoutMs": 60000 },
-    { "name": "capture the home screen", "screenshot": "home" },
-
+    {
+      "name": "wait for the home screen",
+      "assertText": "Google search",
+      "timeoutMs": 60000
+    },
+    {
+      "name": "capture the home screen",
+      "screenshot": "home"
+    },
     {
       "name": "tap an app icon by its label",
       "comment": "By label, not coordinates: uiautomator knows where it is, so this survives a change of device or resolution.",
@@ -24,38 +36,65 @@
       "name": "the tap really launched it",
       "comment": "Read the resumed activity off the device rather than trusting the screenshot.",
       "exec": "for i in $(seq 1 30); do dumpsys activity activities | grep -m1 -iE 'ResumedActivity' | grep -i messaging && break; sleep 2; done",
-      "expect": { "code": 0, "contains": "messaging" }
+      "expect": {
+        "code": 0,
+        "contains": "messaging"
+      }
     },
-    { "name": "capture what the tap opened", "screenshot": "messages" },
-
-    { "name": "back to the home screen", "key": "home" },
-    { "name": "wait for the home screen again", "assertText": "Google search", "timeoutMs": 60000 },
+    {
+      "name": "capture what the tap opened",
+      "screenshot": "messages"
+    },
+    {
+      "name": "back to the home screen",
+      "key": "home"
+    },
+    {
+      "name": "wait for the home screen again",
+      "assertText": "Google search",
+      "timeoutMs": 60000
+    },
     {
       "name": "open Settings",
       "exec": "am start -a android.settings.SETTINGS",
-      "expect": { "code": 0, "contains": "Starting" }
+      "expect": {
+        "code": 0,
+        "contains": "Starting"
+      }
     },
-    { "name": "wait for Settings to draw", "assertText": "Search settings", "timeoutMs": 60000 },
-    { "name": "capture Settings", "screenshot": "settings" },
-
+    {
+      "name": "wait for Settings to draw",
+      "assertText": "Search settings",
+      "timeoutMs": 60000
+    },
+    {
+      "name": "capture Settings",
+      "screenshot": "settings"
+    },
     {
       "name": "tap the search box by its label",
-      "comment": "The label is a plain text node; the tap lands on the control wrapping it.",
-      "tapText": "Search settings"
+      "comment": "The label is a plain text node; the tap lands on the control wrapping it. 'Back' only exists once the search screen is up, so the tap is retried until it is.",
+      "tapText": "Search settings",
+      "until": "Back"
     },
     {
-      "name": "the search screen really opened",
-      "exec": "for i in $(seq 1 30); do dumpsys activity activities | grep -m1 -iE 'ResumedActivity' | grep -i search && break; sleep 2; done",
-      "expect": { "code": 0, "contains": "Search" }
+      "name": "type a query",
+      "type": "bluetooth"
     },
-    { "name": "type a query", "type": "bluetooth" },
     {
       "name": "the typing really reached the field",
       "comment": "Clear text only exists once a search field has content. Asserted immediately: the search module is unstable on an emulator without Play services.",
       "assertText": "Clear text",
       "timeoutMs": 8000
     },
-    { "name": "and the field holds the query", "assertText": "bluetooth", "timeoutMs": 8000 },
-    { "name": "capture the typed query", "screenshot": "search" }
+    {
+      "name": "and the field holds the query",
+      "assertText": "bluetooth",
+      "timeoutMs": 8000
+    },
+    {
+      "name": "capture the typed query",
+      "screenshot": "search"
+    }
   ]
 }

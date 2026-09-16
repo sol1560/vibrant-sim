@@ -204,6 +204,28 @@ async function tapByText(text, exact, { attempts = 12, gapMs = 1500 } = {}) {
 }
 
 /**
+ * Taps, checks the screen actually changed the way it was meant to, and taps
+ * again if it did not.
+ *
+ * A single tap is not always enough on a software-rendered emulator: the
+ * control can still be settling, and the tap lands on nothing. Retrying blindly
+ * is wrong too, so the caller says what success looks like.
+ */
+async function tapUntil(text, exact, until, rounds = 3) {
+	let last = null
+	for (let round = 0; round < rounds; round++) {
+		const tap = await tapByText(text, exact)
+		try {
+			await assertText(until, false, { attempts: 6 })
+			return { ...tap, confirmed: until, rounds: round + 1 }
+		} catch (err) {
+			last = err
+		}
+	}
+	throw new Error(`tapped ${JSON.stringify(text)} ${rounds} times but never saw ${JSON.stringify(until)}. ${last?.message ?? ''}`)
+}
+
+/**
  * Asserts a label is on screen, reading the same tree a tap would use.
  *
  * Grepping a dump for a word finds it anywhere on the page; this says which
@@ -311,7 +333,9 @@ async function handleApi(req, res, url) {
 			case 'tree':
 				return json(res, 200, await driver.tree())
 			case 'tap/text':
-				return json(res, 200, await tapByText(body.text ?? '', body.exact === true, opts(body)))
+				return json(res, 200, body.until
+					? await tapUntil(body.text ?? '', body.exact === true, body.until)
+					: await tapByText(body.text ?? '', body.exact === true, opts(body)))
 			case 'assert/text':
 				return json(res, 200, await assertText(body.text ?? '', body.exact === true, opts(body)))
 			case 'focus':

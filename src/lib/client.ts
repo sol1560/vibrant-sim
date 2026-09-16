@@ -73,8 +73,9 @@ export class SessionClient {
 	}
 
 	/** Clicks whatever the accessibility tree says carries this text. */
-	tapText(text: string, exact = false, timeoutMs?: number) {
-		return this.#json<{ tapped: string; x: number; y: number }>('tap/text', { text, exact, timeoutMs })
+	tapText(text: string, exact = false, timeoutMs?: number, until?: string) {
+		return this.#json<{ tapped: string; x: number; y: number; rounds?: number }>(
+			'tap/text', { text, exact, timeoutMs, until })
 	}
 
 	/** Asserts a label is on screen, using the same tree a tap would use. */
