@@ -69,6 +69,12 @@ func pressCombo(_ combo: String) {
 
 let args = Array(CommandLine.arguments.dropFirst())
 guard let cmd = args.first else { exit(2) }
+
+// Each invocation is a fresh process, and the first event it posts is dropped
+// if the HID tap is not ready yet. That is why the opening keystrokes of a
+// session went missing no matter how long the caller waited beforehand.
+usleep(90000)
+
 switch cmd {
 case "move":
   mouse(Double(args[1])!, Double(args[2])!, .mouseMoved, .left)
