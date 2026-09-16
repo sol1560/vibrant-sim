@@ -1,0 +1,150 @@
+{
+  "schema": "vibrant-sim/result@1",
+  "runId": "local-macos",
+  "target": "gha:macos",
+  "os": {
+    "family": "macos",
+    "image": "gha:macos",
+    "display": "Aqua",
+    "width": 1024,
+    "height": 768
+  },
+  "status": "passed",
+  "startedAt": "2026-09-16T03:01:18.243Z",
+  "durationMs": 20783,
+  "steps": [
+    {
+      "name": "the runner really is a graphical login session",
+      "status": "passed",
+      "durationMs": 80,
+      "action": "exec launchctl managername",
+      "detail": "Aqua\n"
+    },
+    {
+      "name": "capture the idle desktop",
+      "status": "passed",
+      "durationMs": 263,
+      "action": "screenshot idle-desktop",
+      "evidence": [
+        "screenshots/001-idle-desktop.png"
+      ]
+    },
+    {
+      "name": "launch TextEdit",
+      "status": "passed",
+      "durationMs": 258,
+      "action": "exec open -a TextEdit; echo launched",
+      "detail": "launched\n"
+    },
+    {
+      "name": "wait 10000ms",
+      "status": "passed",
+      "durationMs": 10002,
+      "action": "wait 10000ms"
+    },
+    {
+      "name": "a document window is up",
+      "status": "passed",
+      "durationMs": 2614,
+      "action": "exec osascript -e 'tell application \"System Events\" to count windows of process \"TextEdit\"' | awk '$1 >= 1 { print \"window-present\" }'",
+      "detail": "window-present\n"
+    },
+    {
+      "name": "click into the document",
+      "status": "passed",
+      "durationMs": 270,
+      "action": "click 380,308"
+    },
+    {
+      "name": "wait 2500ms",
+      "status": "passed",
+      "durationMs": 2502,
+      "action": "wait 2500ms"
+    },
+    {
+      "name": "type the first line",
+      "status": "passed",
+      "durationMs": 363,
+      "action": "type 8 chars"
+    },
+    {
+      "name": "wait 700ms",
+      "status": "passed",
+      "durationMs": 703,
+      "action": "wait 700ms"
+    },
+    {
+      "name": "press Return",
+      "status": "passed",
+      "durationMs": 146,
+      "action": "key Return"
+    },
+    {
+      "name": "wait 700ms",
+      "status": "passed",
+      "durationMs": 701,
+      "action": "wait 700ms"
+    },
+    {
+      "name": "type the second line",
+      "status": "passed",
+      "durationMs": 393,
+      "action": "type 8 chars"
+    },
+    {
+      "name": "wait 1500ms",
+      "status": "passed",
+      "durationMs": 1503,
+      "action": "wait 1500ms"
+    },
+    {
+      "name": "capture the typed document",
+      "status": "passed",
+      "durationMs": 180,
+      "action": "screenshot after-typing",
+      "evidence": [
+        "screenshots/013-after-typing.png"
+      ]
+    },
+    {
+      "name": "both lines landed, so Return was not swallowed",
+      "status": "passed",
+      "durationMs": 804,
+      "action": "exec osascript -e 'with timeout of 20 seconds' -e 'tell application \"System Events\" to tell process \"TextEdit\" to get value of text area 1 of scroll area 1 of window 1' -e 'end timeout' | tr '\\r' '\\n' | grep -ci 'line' | tr -d ' '",
+      "detail": "2\n"
+    }
+  ],
+  "checks": [
+    {
+      "id": "the runner really is a graphical login session",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "launch TextEdit",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "a document window is up",
+      "kind": "assert",
+      "status": "passed"
+    },
+    {
+      "id": "both lines landed, so Return was not swallowed",
+      "kind": "assert",
+      "status": "passed"
+    }
+  ],
+  "evidence": {
+    "screenshots": [
+      "screenshots/001-idle-desktop.png",
+      "screenshots/013-after-typing.png"
+    ],
+    "logs": []
+  },
+  "cost": {
+    "runnerMinutes": 1,
+    "billableUsd": 0.08
+  }
+}

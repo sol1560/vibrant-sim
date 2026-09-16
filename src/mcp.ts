@@ -6,6 +6,7 @@
 // text because it is far cheaper to reason about than pixels.
 
 import { createInterface } from 'node:readline'
+import { fileURLToPath } from 'node:url'
 import { SessionClient } from './lib/client.ts'
 import { forgetSession, listSessions, resolveSession, type SessionRecord } from './lib/store.ts'
 
@@ -116,7 +117,7 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
 			const { execFileSync } = await import('node:child_process')
 			const out = execFileSync(
 				process.execPath,
-				[new URL('./cli.ts', import.meta.url).pathname, 'session', 'start',
+				[fileURLToPath(new URL('./cli.ts', import.meta.url)), 'session', 'start',
 					'--os', String(args.os ?? 'linux'), '--ttl', String(args.ttl_minutes ?? 30), '--json'],
 				{ encoding: 'utf8', timeout: 900_000 },
 			)

@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { seal } from './envelope.mjs'
 
 const OS = process.env.VSIM_OS || process.platform
@@ -172,7 +173,7 @@ else if (OS === 'windows' || OS === 'win32') await startWindowsDesktop()
 else throw new Error(`unsupported VSIM_OS: ${OS}`)
 
 log('starting the gateway')
-background(process.execPath, [new URL('./gateway.mjs', import.meta.url).pathname], {
+background(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta.url))], {
 	env: {
 		...process.env,
 		VSIM_PAIRING_KEY: pairingKey,
