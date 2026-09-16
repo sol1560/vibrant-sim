@@ -245,7 +245,12 @@ async function startTunnel(port) {
 		['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--logfile', logPath],
 		{ stdio: 'ignore' })
 	children.push(child)
-	child.on('exit', (code) => log(`cloudflared exited with ${code}`))
+	child.on('exit', (code) => {
+		// A quick tunnel that dies leaves the session unreachable while the job
+		// keeps burning runner minutes. End it instead, and say why.
+		log(`cloudflared exited with ${code}`)
+		finish(`the tunnel process exited with ${code}`)
+	})
 
 	const deadline = Date.now() + 180_000
 	let url = null
