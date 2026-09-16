@@ -88,6 +88,28 @@ async function startRecording(name) {
 	return { kind: 'frame-sequence', name, path: target, frameDir }
 }
 
+function runFfmpeg(args) {
+	return new Promise((resolve) => {
+		const ff = spawn('ffmpeg', args, { stdio: 'ignore' })
+		ff.on('error', () => resolve(false))
+		ff.on('exit', (code) => resolve(code === 0))
+	})
+}
+
+async function encodeFrames(frameDir, target, waitMs = 120_000) {
+	const args = ['-y', '-framerate', '2', '-i', join(frameDir, '%05d.png'),
+		'-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', target]
+	const deadline = Date.now() + waitMs
+	let attempt = 0
+	while (Date.now() < deadline) {
+		if (await runFfmpeg(args) && existsSync(target)) return true
+		attempt++
+		if (attempt === 1) console.log('[vsim] ffmpeg is not ready yet; waiting for it to finish installing')
+		await new Promise((r) => setTimeout(r, 10_000))
+	}
+	return false
+}
+
 async function stopRecording() {
 	if (driverRecordingPath) {
 		const path = driverRecordingPath
@@ -103,14 +125,10 @@ async function stopRecording() {
 	frameLoop = null
 	const frames = readdirSync(frameDir).length
 
-	// Encode here when ffmpeg is around so the caller gets a video either way;
-	// the frames stay behind as a fallback when it is not.
-	const encoded = await new Promise((resolve) => {
-		const ff = spawn('ffmpeg', ['-y', '-framerate', '2', '-i', join(frameDir, '%05d.png'),
-			'-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', target], { stdio: 'ignore' })
-		ff.on('error', () => resolve(false))
-		ff.on('exit', (code) => resolve(code === 0 && existsSync(target)))
-	})
+	// Windows has no ffmpeg on the image, so the session fetches it in the
+	// background. A short recording can finish before that does; wait rather
+	// than handing back a directory of PNGs.
+	const encoded = await encodeFrames(frameDir, target)
 
 	if (!encoded) {
 		return { kind: 'frame-sequence', path: null, frameDir, frames, note: 'ffmpeg unavailable; frames kept as-is' }
