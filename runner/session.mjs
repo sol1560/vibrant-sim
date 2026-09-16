@@ -147,6 +147,17 @@ async function startWindowsDesktop() {
 	)
 	await sleep(5000)
 
+	// TightVNC refuses connections from 127.0.0.1 out of the box, which is
+	// exactly where websockify connects from. Without this the viewer shows
+	// "loopback connections are not enabled" and never draws the desktop.
+	await shellCommand(
+		'powershell -NoProfile -Command "' +
+		"Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\TightVNC\\Server' -Name AllowLoopback -Value 1 -Type DWord; " +
+		"Restart-Service tvnserver -Force" +
+		'"',
+	)
+	await sleep(4000)
+
 	if (!existsSync('C:/novnc')) {
 		await shellCommand('git clone --depth 1 -q https://github.com/novnc/noVNC.git C:/novnc')
 	}
