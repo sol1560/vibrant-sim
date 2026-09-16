@@ -11,7 +11,7 @@
 
 import { spawn } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect } from 'node:net'
 import { join, resolve } from 'node:path'
@@ -97,9 +97,12 @@ async function stopRecording() {
 		ff.on('exit', (code) => resolve(code === 0 && existsSync(target)))
 	})
 
-	return encoded
-		? { kind: 'frame-sequence', path: target, frames, bytes: statSync(target).size }
-		: { kind: 'frame-sequence', path: null, frameDir, frames, note: 'ffmpeg unavailable; frames kept as-is' }
+	if (!encoded) {
+		return { kind: 'frame-sequence', path: null, frameDir, frames, note: 'ffmpeg unavailable; frames kept as-is' }
+	}
+	// Hundreds of PNGs would dominate the evidence artifact for no extra value.
+	rmSync(frameDir, { recursive: true, force: true })
+	return { kind: 'frame-sequence', path: target, frames, bytes: statSync(target).size }
 }
 
 function keyMatches(candidate) {
