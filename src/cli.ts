@@ -129,6 +129,9 @@ async function run(flags: Flags): Promise<void> {
 			? resolveSession(flags.session as string)
 			: await startSession(flags)
 	const session = client(record)
+	// A session on this machine is handed over the moment it is serving, which
+	// is before a simulator has booted and its input helper has compiled.
+	if (localHandle) await session.waitUntilReady()
 
 	try {
 		const result = await runFlow(flow, session, {
