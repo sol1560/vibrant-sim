@@ -221,21 +221,35 @@ export async function stopRecording() {
 	return { path: localPath }
 }
 
+// Only the frontmost application's windows are described in full.
+//
+// Walking every visible process took the best part of half a minute on a
+// three-core runner, which is longer than any sensible wait, and what is on
+// screen is what the caller is asking about. Other applications are still
+// listed by name, so the answer says what else is running.
 const TREE_SCRIPT = `
 set out to ""
 tell application "System Events"
-	repeat with p in (every application process whose visible is true)
-		set pname to name of p
+	set frontApp to ""
+	try
+		set frontApp to name of first application process whose frontmost is true
+	end try
+	set out to out & "front|" & frontApp & linefeed
+	repeat with pname in (name of every application process whose visible is true)
 		set out to out & "app|" & pname & linefeed
-		try
-			repeat with w in (every window of p)
-				set wname to name of w
-				set wpos to position of w
-				set wsize to size of w
-				set out to out & "win|" & pname & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
-			end repeat
-		end try
 	end repeat
+	if frontApp is not "" then
+		try
+			tell process frontApp
+				repeat with w in windows
+					set wname to name of w
+					set wpos to position of w
+					set wsize to size of w
+					set out to out & "win|" & frontApp & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
+				end repeat
+			end tell
+		end try
+	end if
 end tell
 return out
 `
@@ -256,7 +270,7 @@ export async function tree() {
 	let last = null
 	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
-			;({ stdout } = await run('osascript', [scriptPath], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }))
+			;({ stdout } = await run('osascript', [scriptPath], { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 }))
 			last = null
 			break
 		} catch (err) {
@@ -270,14 +284,16 @@ export async function tree() {
 	}
 	const apps = []
 	const windows = []
+	let frontmost = null
 	for (const line of stdout.split('\n')) {
 		const parts = line.split('|')
-		if (parts[0] === 'app') apps.push(parts[1])
+		if (parts[0] === 'front') frontmost = parts[1] || null
+		else if (parts[0] === 'app') apps.push(parts[1])
 		else if (parts[0] === 'win') {
 			const [x, y] = (parts[3] ?? '').split(',').map(Number)
 			const [width, height] = (parts[4] ?? '').split(',').map(Number)
 			windows.push({ app: parts[1], name: parts[2], x, y, width, height })
 		}
 	}
-	return { kind: 'macos-accessibility', apps, windows }
+	return { kind: 'macos-accessibility', frontmost, apps, windows }
 }
