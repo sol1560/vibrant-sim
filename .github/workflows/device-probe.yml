@@ -71,6 +71,29 @@ jobs:
           echo "=== emulator.log (whole file) ==="
           cat /tmp/emulator.log || echo "no log at all"
 
+      - name: Settle the launcher
+        run: |
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          # No GPU on a hosted runner, so everything renders in software and the
+          # launcher misses its frame deadline. Animations are the main cause.
+          for s in window_animation_scale transition_animation_scale animator_duration_scale; do
+            adb shell settings put global $s 0
+          done
+          adb shell input keyevent 82 || true
+          adb shell wm dismiss-keyguard || true
+          for i in $(seq 1 40); do
+            focus=$(adb shell dumpsys window displays | grep -m1 -i mCurrentFocus || true)
+            echo "focus: $focus"
+            case "$focus" in
+              *Launcher*|*launcher*) echo "LAUNCHER_READY"; break ;;
+              *Application*Not*Responding*|*ANR*)
+                adb shell uiautomator dump /sdcard/anr.xml > /dev/null 2>&1 || true
+                # "Wait" keeps the app alive; "Close app" would leave no home screen.
+                adb shell input tap 540 1359 || true ;;
+            esac
+            sleep 5
+          done
+
       - name: Drive it
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"

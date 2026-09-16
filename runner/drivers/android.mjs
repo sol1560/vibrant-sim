@@ -27,6 +27,39 @@ export async function prepare() {
 	await adb(['wait-for-device'])
 	// A device that answers adb is not necessarily finished booting.
 	await shell('while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 1; done')
+	await shell('while ! pm list packages > /dev/null 2>&1; do sleep 1; done')
+
+	// A hosted runner has no GPU, so everything renders in software. Animations
+	// are what actually pushes the launcher into "isn't responding"; without
+	// them the first screenshot is a real home screen rather than a black frame.
+	for (const scale of ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']) {
+		await shell(`settings put global ${scale} 0`).catch(() => {})
+	}
+	await shell('input keyevent 82').catch(() => {})
+	await shell('wm dismiss-keyguard').catch(() => {})
+	await settleLauncher()
+}
+
+/**
+ * Waits for the home screen to actually draw, dismissing the not-responding
+ * dialog if software rendering made the launcher miss its deadline.
+ */
+async function settleLauncher(timeoutMs = 120_000) {
+	const deadline = Date.now() + timeoutMs
+	while (Date.now() < deadline) {
+		const focus = await shell('dumpsys window displays | grep -m1 -i mCurrentFocus').catch(() => '')
+
+		if (/Application Not Responding|ANR/i.test(focus)) {
+			const waitButton = (await tree()).windows.find((n) => n.text === 'Wait' && n.clickable)
+			if (waitButton) await click(...waitButton.centre)
+			await new Promise((r) => setTimeout(r, 3000))
+			continue
+		}
+		if (/Launcher|launcher/.test(focus)) return
+		await new Promise((r) => setTimeout(r, 2000))
+	}
+	// Not fatal: a flow that launches its own app never needs the home screen.
+	console.log('[vsim] the launcher never settled; carrying on anyway')
 }
 
 export async function info() {
