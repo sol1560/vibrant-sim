@@ -186,6 +186,32 @@ async function tapByText(text, exact, { attempts = 4, gapMs = 1500 } = {}) {
 	return { tapped: labelOf(target), x, y }
 }
 
+/**
+ * Asserts a label is on screen, reading the same tree a tap would use.
+ *
+ * Grepping a dump for a word finds it anywhere on the page; this says which
+ * element carries it, and lists what was actually visible when it does not.
+ */
+async function assertText(text, exact, { attempts = 4, gapMs = 1500 } = {}) {
+	if (!text) throw new Error('assert/text needs text')
+	const needle = text.toLowerCase()
+	const labelOf = (node) => String(node.text ?? node.label ?? node.name ?? '')
+
+	let windows = []
+	for (let attempt = 0; attempt < attempts; attempt++) {
+		if (attempt) await new Promise((r) => setTimeout(r, gapMs))
+		;({ windows = [] } = await driver.tree())
+		const hit = windows.find((node) => {
+			const label = labelOf(node).toLowerCase()
+			return label && (exact ? label === needle : label.includes(needle))
+		})
+		if (hit) return { found: true, label: labelOf(hit), x: hit.x, y: hit.y }
+	}
+
+	const seen = windows.map(labelOf).filter(Boolean).slice(0, 30)
+	throw new Error(`${JSON.stringify(text)} is not on screen. Visible: ${seen.join(' | ') || 'nothing labelled'}`)
+}
+
 function keyMatches(candidate) {
 	if (typeof candidate !== 'string' || candidate.length !== PAIRING_KEY.length) return false
 	return timingSafeEqual(Buffer.from(candidate), Buffer.from(PAIRING_KEY))
@@ -266,6 +292,8 @@ async function handleApi(req, res, url) {
 				return json(res, 200, await driver.tree())
 			case 'tap/text':
 				return json(res, 200, await tapByText(body.text ?? '', body.exact === true))
+			case 'assert/text':
+				return json(res, 200, await assertText(body.text ?? '', body.exact === true))
 			case 'focus':
 				if (!driver.focus) return json(res, 501, { error: `focus is not implemented on ${PLATFORM}` })
 				return json(res, 200, await driver.focus(body.title ?? ''))

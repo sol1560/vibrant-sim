@@ -66,20 +66,8 @@
     },
     {
       "name": "the query really reached the search field",
-      "comment": "uiautomator writes text before resource-id on a node, so match the whole node and look inside it.",
-      "exec": "uiautomator dump /sdcard/vsim-check.xml > /dev/null 2>&1 && grep -o '<node[^>]*open_search_view_edit_text[^>]*>' /sdcard/vsim-check.xml | head -1",
-      "expect": {
-        "code": 0,
-        "contains": "bluetooth"
-      }
-    },
-    {
-      "name": "and the results are about Bluetooth",
-      "exec": "grep -c 'Bluetooth' /sdcard/vsim-check.xml",
-      "expect": {
-        "code": 0,
-        "notContains": "0\n"
-      }
+      "comment": "Bluetooth address only exists in search results, never on the Settings home page, so this cannot pass by accident.",
+      "assertText": "Bluetooth address"
     }
   ]
 }

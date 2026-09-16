@@ -12,6 +12,8 @@ export type FlowStep = {
 	key?: string
 	/** Clicks by label instead of coordinates; needs a platform with a tree. */
 	tapText?: string
+	/** Asserts a label is on screen; needs a platform with a tree. */
+	assertText?: string
 	/** Windows only: bring a window to the front before interacting with it. */
 	focus?: string
 	screenshot?: string
@@ -32,6 +34,7 @@ function describe(step: FlowStep): string {
 	if (step.exec) return `exec ${step.exec}`
 	if (step.click) return `click ${step.click.join(',')}`
 	if (step.tapText) return `tap ${JSON.stringify(step.tapText)}`
+	if (step.assertText) return `assert ${JSON.stringify(step.assertText)}`
 	if (step.move) return `move ${step.move.join(',')}`
 	if (step.type !== undefined) return `type ${step.type.length} chars`
 	if (step.key) return `key ${step.key}`
@@ -96,6 +99,11 @@ export async function runFlow(
 			if (step.tapText) {
 				const hit = await session.tapText(step.tapText)
 				record.detail = `tapped ${JSON.stringify(hit.tapped)} at ${hit.x},${hit.y}`
+			}
+			if (step.assertText) {
+				const hit = await session.assertText(step.assertText)
+				record.detail = `found ${JSON.stringify(hit.label)}`
+				checks.push({ id: name, kind: 'assert', status: 'passed' })
 			}
 			if (step.click) await session.click(step.click[0], step.click[1])
 			if (step.move) await session.move(step.move[0], step.move[1])

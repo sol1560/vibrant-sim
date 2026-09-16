@@ -77,6 +77,11 @@ export class SessionClient {
 		return this.#json<{ tapped: string; x: number; y: number }>('tap/text', { text, exact })
 	}
 
+	/** Asserts a label is on screen, using the same tree a tap would use. */
+	assertText(text: string, exact = false) {
+		return this.#json<{ found: true; label: string }>('assert/text', { text, exact })
+	}
+
 	/** Windows only: bring a window to the front by a substring of its title. */
 	focus(title: string) {
 		return this.#json<{ focused: string }>('focus', { title })
