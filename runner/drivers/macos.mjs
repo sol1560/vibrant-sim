@@ -29,6 +29,15 @@ func mouse(_ x: Double, _ y: Double, _ type: CGEventType, _ button: CGMouseButto
 }
 
 func typeString(_ s: String) {
+  // Press and release Shift first. It produces no character, but it makes the
+  // tap deliver what follows: without it the opening characters of a session
+  // were swallowed, however long the caller waited beforehand.
+  if let wakeDown = CGEvent(keyboardEventSource: nil, virtualKey: 56, keyDown: true),
+     let wakeUp = CGEvent(keyboardEventSource: nil, virtualKey: 56, keyDown: false) {
+    post(wakeDown)
+    post(wakeUp)
+    usleep(40000)
+  }
   for scalar in Array(s.utf16) {
     var unit = scalar
     guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
