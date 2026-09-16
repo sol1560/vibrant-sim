@@ -4,74 +4,48 @@
     {
       "name": "the emulator finished booting",
       "exec": "getprop sys.boot_completed",
-      "expect": {
-        "code": 0,
-        "contains": "1"
-      }
+      "expect": { "code": 0, "contains": "1" }
     },
     {
       "name": "it is the emulator, not a stray device",
       "exec": "getprop ro.hardware",
-      "expect": {
-        "code": 0,
-        "contains": "ranchu"
-      }
+      "expect": { "code": 0, "contains": "ranchu" }
     },
+    { "name": "capture the home screen", "screenshot": "home" },
+
     {
-      "name": "capture the home screen",
-      "screenshot": "home"
+      "name": "tap an app icon by its label",
+      "comment": "By label, not coordinates: uiautomator knows where it is, so this survives a change of device or resolution.",
+      "tapText": "Messages"
     },
+    { "wait": 6000 },
+    { "name": "capture what the tap opened", "screenshot": "messages" },
     {
-      "name": "open Settings",
-      "exec": "am start -a android.settings.SETTINGS",
-      "expect": {
-        "code": 0,
-        "contains": "Starting"
-      }
+      "name": "the tap really launched it",
+      "comment": "Read the resumed activity off the device rather than trusting the screenshot.",
+      "exec": "dumpsys activity activities | grep -m1 -iE 'ResumedActivity'",
+      "expect": { "code": 0, "contains": "messaging" }
     },
+
+    { "name": "back to the home screen", "key": "home" },
+    { "wait": 2500 },
     {
-      "wait": 4000
+      "name": "open the Settings search directly",
+      "comment": "Straight to the activity: reaching it by tapping depends on indexing and animation that a freshly booted emulator has not finished.",
+      "exec": "am start -n com.android.settings/.search.SearchActivity",
+      "expect": { "code": 0, "contains": "Starting" }
     },
+    { "wait": 4000 },
+    { "name": "type a query", "type": "bluetooth" },
+    { "wait": 2500 },
+    { "name": "capture the typed query", "screenshot": "search" },
     {
-      "name": "Settings is really in the foreground",
-      "exec": "dumpsys activity activities | grep -m1 -iE 'ResumedActivity|mResumedActivity'",
-      "expect": {
-        "code": 0,
-        "contains": "Settings"
-      },
-      "comment": "dumpsys window sometimes reports no focus mid-transition; the resumed activity is the reliable read."
-    },
-    {
-      "name": "capture Settings",
-      "screenshot": "settings"
-    },
-    {
-      "name": "tap the search box by its label",
-      "comment": "By label, not coordinates: uiautomator knows where it is, and this survives a change of device or resolution.",
-      "tapText": "Search settings"
-    },
-    {
-      "wait": 3000
-    },
-    {
-      "name": "type a query",
-      "type": "bluetooth"
-    },
-    {
-      "wait": 3000
-    },
-    {
-      "name": "capture the search results",
-      "screenshot": "search"
-    },
-    {
-      "name": "the search screen really opened",
-      "comment": "Clear text only exists once a search field has content, so it proves both the tap and the typing.",
+      "name": "the typing really reached the field",
+      "comment": "Clear text only exists once a search field has content.",
       "assertText": "Clear text"
     },
     {
-      "name": "the query really reached the search field",
-      "comment": "A freshly booted emulator has not finished indexing Settings, so assert on the field, not on results.",
+      "name": "and the field holds the query",
       "assertText": "bluetooth"
     }
   ]
