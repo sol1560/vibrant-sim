@@ -228,6 +228,8 @@ async function startAndroidEmulator() {
 		`"${adb}" shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'`,
 	)
 	log('the emulator has finished booting')
+	// The gateway runs as a separate process and does not inherit this PATH.
+	return { VSIM_ADB: adb }
 }
 
 // --- orchestration -----------------------------------------------------------
@@ -263,10 +265,11 @@ async function startTunnel(port) {
 const pairingKey = randomBytes(32).toString('base64url')
 const idleFile = join(OUT_DIR, 'idle-seconds')
 
+let driverEnv = {}
 if (OS === 'linux') await startLinuxDesktop()
 else if (OS === 'macos' || OS === 'darwin') await startMacDesktop()
 else if (OS === 'windows' || OS === 'win32') await startWindowsDesktop()
-else if (OS === 'android') await startAndroidEmulator()
+else if (OS === 'android') driverEnv = await startAndroidEmulator()
 // The Apple simulator driver discovers, boots and opens its own device; there
 // is nothing for the session to set up first.
 else if (!DEVICE_TARGETS.has(OS)) throw new Error(`unsupported VSIM_OS: ${OS}`)
@@ -283,6 +286,7 @@ background(process.execPath, [fileURLToPath(new URL('./gateway.mjs', import.meta
 		VSIM_IDLE_FILE: idleFile,
 		VSIM_STOP_FILE: join(OUT_DIR, 'stop'),
 		VSIM_EVIDENCE_DIR: join(OUT_DIR, 'evidence'),
+		...driverEnv,
 	},
 })
 await waitForHttp(`http://127.0.0.1:${GATEWAY_PORT}/__vsim/api/health`, {
