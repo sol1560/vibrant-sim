@@ -164,6 +164,12 @@ async function startWindowsDesktop() {
 	await shellCommand('python -m pip install --quiet websockify')
 	background('cmd', ['/c', `python -m websockify --web C:/novnc ${DESKTOP_PORT} localhost:5900`])
 	await waitForHttp(`http://127.0.0.1:${DESKTOP_PORT}/vnc.html`, { label: 'noVNC', timeoutMs: 120_000 })
+
+	// Unlike the Linux and macOS images, Windows ships without ffmpeg, so a
+	// recording would stay a pile of PNGs. Fetch it in the background rather
+	// than making every session wait a minute for something most do not use.
+	spawn('cmd', ['/c', 'choco install ffmpeg-shared -y --no-progress > ffmpeg-install.log 2>&1'],
+		{ stdio: 'ignore', detached: false })
 }
 
 // --- orchestration -----------------------------------------------------------
