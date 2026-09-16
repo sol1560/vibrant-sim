@@ -221,26 +221,53 @@ export async function stopRecording() {
 	return { path: localPath }
 }
 
-/** Real accessibility tree via System Events; far cheaper for an agent than pixels. */
+const TREE_SCRIPT = `
+set out to ""
+tell application "System Events"
+	repeat with p in (every application process whose visible is true)
+		set pname to name of p
+		set out to out & "app|" & pname & linefeed
+		try
+			repeat with w in (every window of p)
+				set wname to name of w
+				set wpos to position of w
+				set wsize to size of w
+				set out to out & "win|" & pname & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
+			end repeat
+		end try
+	end repeat
+end tell
+return out
+`
+
+/**
+ * Real accessibility tree via System Events; far cheaper for an agent than
+ * pixels.
+ *
+ * The script goes through a file rather than a chain of -e arguments: a
+ * multi-line script passed inline is noticeably more fragile, and when it does
+ * fail the reason is in stderr, not in the message execFile builds.
+ */
 export async function tree() {
-	const script = `
-    set out to ""
-    tell application "System Events"
-      repeat with p in (every application process whose visible is true)
-        set pname to name of p
-        set out to out & "app|" & pname & linefeed
-        try
-          repeat with w in (every window of p)
-            set wname to name of w
-            set wpos to position of w
-            set wsize to size of w
-            set out to out & "win|" & pname & "|" & wname & "|" & (item 1 of wpos) & "," & (item 2 of wpos) & "|" & (item 1 of wsize) & "," & (item 2 of wsize) & linefeed
-          end repeat
-        end try
-      end repeat
-    end tell
-    return out`
-	const { stdout } = await run('osascript', ['-e', script], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 })
+	const scriptPath = join(tmpdir(), `vsim-tree-${process.pid}.applescript`)
+	await writeFile(scriptPath, TREE_SCRIPT, 'utf8')
+
+	let stdout = ''
+	let last = null
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			;({ stdout } = await run('osascript', [scriptPath], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }))
+			last = null
+			break
+		} catch (err) {
+			// System Events is busy often enough that one failure means nothing.
+			last = err
+			await new Promise((r) => setTimeout(r, 1500))
+		}
+	}
+	if (last) {
+		throw new Error(`reading the accessibility tree failed: ${String(last.stderr || last.message).trim().split('\n').pop()}`)
+	}
 	const apps = []
 	const windows = []
 	for (const line of stdout.split('\n')) {
