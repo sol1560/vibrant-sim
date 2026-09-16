@@ -1,0 +1,98 @@
+name: vsim-verify
+
+# The unattended half: run a flow on a real desktop, produce an evidence
+# package, then block on a human or an agent signing it off.
+#
+# The verify job needs no tunnel — the agent is the run — so it talks to the
+# gateway on loopback. Only the gate job touches an environment.
+on:
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: Path to the flow file
+        default: examples/smoke.flow.json
+      os:
+        type: choice
+        options: [linux, macos, windows]
+        default: linux
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: "verify on ${{ inputs.os || 'linux' }}"
+    runs-on: ${{ (inputs.os || 'linux') == 'macos' && 'macos-latest' || (inputs.os || 'linux') == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    outputs:
+      status: ${{ steps.flow.outputs.status }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Bring up a local session
+        shell: bash
+        env:
+          VSIM_OS: ${{ inputs.os || 'linux' }}
+          VSIM_TUNNEL: 'off'
+          VSIM_TTL_MINUTES: '50'
+          VSIM_IDLE_MINUTES: '50'
+          VSIM_OUT_DIR: .vsim
+        run: |
+          set -euo pipefail
+          node runner/session.mjs &
+          echo $! > .vsim.pid
+          for i in $(seq 1 240); do
+            [ -f .vsim/handle.json ] && break
+            sleep 2
+          done
+          test -f .vsim/handle.json || { echo "session never came up"; exit 1; }
+
+      - name: Run the flow
+        id: flow
+        shell: bash
+        run: |
+          set -uo pipefail
+          node src/cli.ts run --flow "${{ inputs.flow || 'examples/smoke.flow.json' }}" \
+            --local .vsim/handle.json --evidence .vsim-out
+          code=$?
+          status=$(node -e "process.stdout.write(require('./.vsim-out/vsim.result.json').status)")
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Tear the session down
+        if: always()
+        shell: bash
+        run: |
+          touch .vsim/stop
+          pid=$(cat .vsim.pid 2>/dev/null || echo)
+          [ -n "$pid" ] && { for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 2; done; }
+          exit 0
+
+      - name: Publish the evidence package
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vsim-evidence-${{ inputs.os || 'linux' }}-${{ github.run_attempt }}
+          path: |
+            .vsim-out
+            .vsim/evidence
+          if-no-files-found: warn
+
+  gate:
+    name: acceptance
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment are the gate. Waiting is not
+    # billed, so holding a release for a person costs nothing.
+    environment: acceptance
+    steps:
+      - name: Record the verdict
+        run: |
+          echo "### vibrant-sim acceptance" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- flow result: **${{ needs.verify.outputs.status || 'error' }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- signed off by: ${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
+          test "${{ needs.verify.outputs.status }}" = "passed"

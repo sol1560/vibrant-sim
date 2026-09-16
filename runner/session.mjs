@@ -12,6 +12,9 @@ import { seal } from './envelope.mjs'
 
 const OS = process.env.VSIM_OS || process.platform
 const RECIPIENT = process.env.VSIM_RECIPIENT_KEY || ''
+// An unattended verify run is the agent, so it needs no tunnel and no sealing:
+// the handle never leaves the machine.
+const USE_TUNNEL = process.env.VSIM_TUNNEL !== 'off'
 const TTL_MINUTES = Math.min(Number(process.env.VSIM_TTL_MINUTES || 30), 330)
 const IDLE_MINUTES = Number(process.env.VSIM_IDLE_MINUTES || 10)
 const OUT_DIR = process.env.VSIM_OUT_DIR || '.vsim'
@@ -19,7 +22,7 @@ const GATEWAY_PORT = 7890
 const DESKTOP_PORT = OS === 'linux' ? 3000 : 6080
 const VNC_PASSWORD = 'vs' + randomBytes(3).toString('hex') // VNC legacy caps this at 8 chars
 
-if (!RECIPIENT) throw new Error('VSIM_RECIPIENT_KEY is required')
+if (USE_TUNNEL && !RECIPIENT) throw new Error('VSIM_RECIPIENT_KEY is required when a tunnel is exposed')
 mkdirSync(OUT_DIR, { recursive: true })
 
 const children = []
@@ -173,10 +176,13 @@ await waitForHttp(`http://127.0.0.1:${GATEWAY_PORT}/__vsim/api/health`, {
 })
 log('gateway is up')
 
-const tunnelUrl = await startTunnel(GATEWAY_PORT)
-// 401 is the healthy answer here: the gateway is reachable and refusing traffic
-// that has no pairing key.
-await waitForHttp(`${tunnelUrl}/__vsim/api/health`, { label: 'tunnel', timeoutMs: 180_000, accept: (s) => s === 401 })
+let baseUrl = `http://127.0.0.1:${GATEWAY_PORT}`
+if (USE_TUNNEL) {
+	baseUrl = await startTunnel(GATEWAY_PORT)
+	// Deliberately not probing the tunnel from here. A macOS runner cannot
+	// reliably resolve its own trycloudflare hostname, and the caller has to
+	// verify reachability anyway before it reports the session as usable.
+}
 
 const viewerPath = OS === 'linux'
 	? '/'
@@ -189,16 +195,22 @@ const handle = {
 	runUrl: process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
 		? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
 		: null,
-	tunnelUrl,
+	tunnelUrl: baseUrl,
 	pairingKey,
-	viewerUrl: `${tunnelUrl}/__vsim/auth?k=${encodeURIComponent(pairingKey)}&to=${encodeURIComponent(viewerPath)}`,
-	apiUrl: `${tunnelUrl}/__vsim/api`,
+	viewerUrl: `${baseUrl}/__vsim/auth?k=${encodeURIComponent(pairingKey)}&to=${encodeURIComponent(viewerPath)}`,
+	apiUrl: `${baseUrl}/__vsim/api`,
 	expiresAt: new Date(Date.now() + TTL_MINUTES * 60_000).toISOString(),
 }
 
-writeFileSync(join(OUT_DIR, 'handle.sealed'), seal(RECIPIENT, handle))
-log(`sealed handle written; ttl ${TTL_MINUTES}m, idle limit ${IDLE_MINUTES}m`)
-log('the tunnel URL is intentionally absent from this log')
+if (USE_TUNNEL) {
+	writeFileSync(join(OUT_DIR, 'handle.sealed'), seal(RECIPIENT, handle))
+	log(`sealed handle written; ttl ${TTL_MINUTES}m, idle limit ${IDLE_MINUTES}m`)
+	log('the tunnel URL is intentionally absent from this log')
+} else {
+	// Loopback only, never uploaded as an artifact.
+	writeFileSync(join(OUT_DIR, 'handle.json'), JSON.stringify(handle, null, 2))
+	log(`local handle written; ttl ${TTL_MINUTES}m, idle limit ${IDLE_MINUTES}m`)
+}
 
 // --- keep alive --------------------------------------------------------------
 

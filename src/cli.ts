@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { generateRecipient, open } from '../runner/envelope.mjs'
 import { SessionClient } from './lib/client.ts'
+import { parseFlow, runFlow } from './lib/flow.ts'
 import { GitHub, resolveRepo, resolveToken } from './lib/github.ts'
+import { toJUnit, toMarkdownSummary } from './lib/result.ts'
 import {
 	forgetSession,
 	listSessions,
@@ -48,48 +50,9 @@ function client(record: SessionRecord): SessionClient {
 // --- commands ----------------------------------------------------------------
 
 async function sessionStart(flags: Flags): Promise<void> {
-	const os = str(flags, 'os', 'linux')
-	if (!['linux', 'macos', 'windows'].includes(os)) throw new Error(`unknown --os: ${os}`)
-
-	const repo = resolveRepo(typeof flags.repo === 'string' ? flags.repo : undefined)
-	const github = new GitHub(repo, resolveToken())
-	const id = `${os}-${randomBytes(4).toString('hex')}`
-	const { publicKey, privateKey } = generateRecipient()
-
-	console.error(`starting a ${os} session on ${repo.owner}/${repo.repo} (id ${id})`)
-	await github.dispatch(WORKFLOW, str(flags, 'ref', 'main'), {
-		session_id: id,
-		os,
-		recipient_key: publicKey,
-		ttl_minutes: str(flags, 'ttl', '30'),
-		idle_minutes: str(flags, 'idle', '10'),
-	})
-
-	const run = await github.findRunByName(id)
-	console.error(`run ${run.id}: ${run.html_url}`)
-
-	const record: SessionRecord = {
-		id,
-		os,
-		repo: `${repo.owner}/${repo.repo}`,
-		runId: run.id,
-		runUrl: run.html_url,
-		privateKey,
-		startedAt: new Date().toISOString(),
-	}
-	saveSession(record)
-
-	console.error('waiting for the machine to come up and seal its handle...')
-	const artifactId = await github.waitForArtifact(run.id, `vsim-handle-${id}`)
-	const files = await github.downloadArtifact(artifactId)
-	const sealed = files.get('handle.sealed')
-	if (!sealed) throw new Error(`handle artifact did not contain handle.sealed (got ${[...files.keys()].join(', ')})`)
-
-	const handle = open<SessionHandle>(privateKey, sealed.toString('utf8'))
-	record.handle = handle
-	saveSession(record)
-
-	await new SessionClient(handle).waitUntilReady()
+	const record = await startSession(flags)
+	const { id, os } = record
+	const handle = record.handle!
 
 	if (flags.json) {
 		console.log(JSON.stringify({ id, ...handle }, null, 2))
@@ -139,6 +102,131 @@ async function shot(positional: string[], flags: Flags): Promise<void> {
 	console.log(`${out} (${png.length} bytes)`)
 }
 
+async function run(flags: Flags): Promise<void> {
+	const flowPath = str(flags, 'flow', '')
+	if (!flowPath) throw new Error('vsim run needs --flow <file.json>')
+	const flow = parseFlow(readFileSync(flowPath, 'utf8'))
+	const evidenceDir = str(flags, 'evidence', '.vsim-out')
+
+	// Three ways in: a handle file written by a session on this same machine
+	// (the unattended path), an existing remote session, or a fresh one.
+	const localHandle = typeof flags.local === 'string' ? (flags.local as string) : null
+	const reuse = typeof flags.session === 'string'
+	const record = localHandle
+		? localRecord(localHandle)
+		: reuse
+			? resolveSession(flags.session as string)
+			: await startSession(flags)
+	const session = client(record)
+
+	try {
+		const result = await runFlow(flow, session, {
+			evidenceDir,
+			target: `gha:${record.os}`,
+			runId: record.id,
+		})
+		mkdirSync(evidenceDir, { recursive: true })
+		writeFileSync(join(evidenceDir, 'vsim.result.json'), JSON.stringify(result, null, 2))
+		writeFileSync(join(evidenceDir, 'junit.xml'), toJUnit(result))
+		const summary = toMarkdownSummary(result)
+		writeFileSync(join(evidenceDir, 'summary.md'), summary)
+		if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`)
+
+		console.log(summary)
+		console.log(`\nevidence in ${evidenceDir}/`)
+		if (result.status !== 'passed') process.exitCode = 1
+	} finally {
+		// Only tear down a session this command created.
+		if (!reuse && !localHandle) {
+			await session.stop().catch(() => {})
+			forgetSession(record.id)
+		}
+	}
+}
+
+/** Wraps a handle written by a session running on this machine. */
+function localRecord(path: string): SessionRecord {
+	const handle = JSON.parse(readFileSync(path, 'utf8')) as SessionHandle
+	return {
+		id: `local-${handle.os}`,
+		os: handle.os,
+		repo: process.env.GITHUB_REPOSITORY ?? 'local',
+		runId: Number(handle.runId ?? 0),
+		runUrl: handle.runUrl ?? '',
+		privateKey: '',
+		startedAt: new Date().toISOString(),
+		handle,
+	}
+}
+
+async function approve(positional: string[], flags: Flags): Promise<void> {
+	const runId = Number(positional[0])
+	if (!runId) throw new Error('vsim approve needs a run id')
+	const repo = resolveRepo(typeof flags.repo === 'string' ? flags.repo : undefined)
+	const github = new GitHub(repo, resolveToken())
+
+	const pending = await github.pendingDeployments(runId)
+	if (!pending.length) throw new Error(`run ${runId} is not waiting on anyone`)
+
+	const blocked = pending.filter((p) => !p.current_user_can_approve)
+	if (blocked.length === pending.length) {
+		throw new Error(
+			`this token cannot approve ${blocked.map((p) => p.environment.name).join(', ')}. ` +
+			'GITHUB_TOKEN is never enough; use a PAT belonging to a required reviewer.',
+		)
+	}
+
+	const state = flags.reject ? 'rejected' : 'approved'
+	const ids = pending.filter((p) => p.current_user_can_approve).map((p) => p.environment.id)
+	await github.reviewDeployment(runId, ids, state, str(flags, 'note', `${state} by vsim`))
+	console.log(`${state}: ${pending.map((p) => p.environment.name).join(', ')} on run ${runId}`)
+}
+
+/** Shared by `session start` and `run`. */
+async function startSession(flags: Flags): Promise<SessionRecord> {
+	const os = str(flags, 'os', 'linux')
+	if (!['linux', 'macos', 'windows'].includes(os)) throw new Error(`unknown --os: ${os}`)
+
+	const repo = resolveRepo(typeof flags.repo === 'string' ? flags.repo : undefined)
+	const github = new GitHub(repo, resolveToken())
+	const id = `${os}-${randomBytes(4).toString('hex')}`
+	const { publicKey, privateKey } = generateRecipient()
+
+	console.error(`starting a ${os} session on ${repo.owner}/${repo.repo} (id ${id})`)
+	await github.dispatch(WORKFLOW, str(flags, 'ref', 'main'), {
+		session_id: id,
+		os,
+		recipient_key: publicKey,
+		ttl_minutes: str(flags, 'ttl', '30'),
+		idle_minutes: str(flags, 'idle', '10'),
+	})
+
+	const workflowRun = await github.findRunByName(id)
+	console.error(`run ${workflowRun.id}: ${workflowRun.html_url}`)
+
+	const record: SessionRecord = {
+		id,
+		os,
+		repo: `${repo.owner}/${repo.repo}`,
+		runId: workflowRun.id,
+		runUrl: workflowRun.html_url,
+		privateKey,
+		startedAt: new Date().toISOString(),
+	}
+	saveSession(record)
+
+	console.error('waiting for the machine to come up and seal its handle...')
+	const artifactId = await github.waitForArtifact(workflowRun.id, `vsim-handle-${id}`)
+	const files = await github.downloadArtifact(artifactId)
+	const sealed = files.get('handle.sealed')
+	if (!sealed) throw new Error(`handle artifact did not contain handle.sealed (got ${[...files.keys()].join(', ')})`)
+
+	record.handle = open<SessionHandle>(privateKey, sealed.toString('utf8'))
+	saveSession(record)
+	await new SessionClient(record.handle).waitUntilReady()
+	return record
+}
+
 async function doctor(): Promise<void> {
 	const checks: [string, () => string][] = [
 		['node', () => {
@@ -179,6 +267,9 @@ const USAGE = `vsim — on-demand cloud machines with a screen
   vsim exec   [id] <command>
   vsim tree   [id]
   vsim record [id] start|stop [--name run]
+
+  vsim run --flow checks.json [--os linux] [--session id] [--evidence dir]
+  vsim approve <run-id> [--reject] [--note "..."]
 
   vsim doctor
 `
@@ -226,6 +317,10 @@ async function main(): Promise<void> {
 			const result = action === 'start' ? await c.startRecording(str(flags, 'name', 'session')) : await c.stopRecording()
 			return console.log(JSON.stringify(result, null, 2))
 		}
+		case 'run':
+			return run(flags)
+		case 'approve':
+			return approve(positional, flags)
 		case 'doctor':
 			return doctor()
 		default:

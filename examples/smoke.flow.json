@@ -1,0 +1,27 @@
+{
+  "name": "desktop smoke",
+  "steps": [
+    {
+      "name": "the desktop answers",
+      "exec": "echo vibrant-sim-alive",
+      "expect": { "code": 0, "contains": "vibrant-sim-alive" }
+    },
+    { "name": "capture the idle desktop", "screenshot": "idle-desktop" },
+    {
+      "name": "open a terminal on the desktop",
+      "exec": "DISPLAY=:1 nohup xfce4-terminal --geometry=96x26+60+120 >/dev/null 2>&1 & sleep 3; echo opened",
+      "expect": { "code": 0, "contains": "opened" }
+    },
+    { "name": "focus it", "click": [400, 300] },
+    { "wait": 800 },
+    { "name": "type a command into the real GUI", "type": "echo acceptance-probe-$(date +%s) | tee /tmp/vsim-proof.txt" },
+    { "name": "submit", "key": "Return" },
+    { "wait": 1500 },
+    { "name": "capture the result on screen", "screenshot": "after-typing" },
+    {
+      "name": "the keystrokes actually reached the GUI",
+      "exec": "grep -q acceptance-probe /tmp/vsim-proof.txt && echo keystrokes-landed",
+      "expect": { "code": 0, "contains": "keystrokes-landed" }
+    }
+  ]
+}

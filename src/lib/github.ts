@@ -135,7 +135,9 @@ export class GitHub {
 		return readZip(Buffer.from(await res.arrayBuffer()))
 	}
 
-	async pendingDeployments(runId: number): Promise<{ environment: { name: string }; current_user_can_approve: boolean }[]> {
+	async pendingDeployments(
+		runId: number,
+	): Promise<{ environment: { id: number; name: string }; current_user_can_approve: boolean }[]> {
 		return this.#json(`${this.#base()}/actions/runs/${runId}/pending_deployments`)
 	}
 
